@@ -1,0 +1,38 @@
+{
+  "policy_id": "pricing_policy_v1",
+  "version": "1.0.0",
+  "product_line": "auto",
+  "currency": "EUR",
+  "basis": "real freMTPL2 frequency x severity pure premium",
+  "parameters": {
+    "target_loss_ratio": 0.7,
+    "surcharge_multiple_of_baseline": 1.0,
+    "reject_multiple_of_baseline": 3.0
+  },
+  "calibrated_thresholds": {
+    "baseline_pure_premium_eur": 123.01329803466797,
+    "surcharge_threshold_eur": 123.01329803466797,
+    "reject_threshold_eur": 369.0398941040039,
+    "equivalent_surcharge_claim_probability": 0.053210427904720255,
+    "equivalent_reject_claim_probability": 0.15963128371416077
+  },
+  "decision_rule": [
+    "reject if pure_premium >= reject_threshold_eur",
+    "accept_with_surcharge if pure_premium >= surcharge_threshold_eur",
+    "accept_standard otherwise"
+  ],
+  "provenance": {
+    "frequency_dataset": "freMTPL2freq",
+    "severity_dataset": "freMTPL2sev",
+    "urls": [
+      "https://openml.org/data/v1/download/20649148/freMTPL2freq.arff",
+      "https://openml.org/data/v1/download/20649149/freMTPL2sev.arff"
+    ],
+    "md5": {
+      "freMTPL2freq": "f8875568bf0ca622929105197e2db613",
+      "freMTPL2sev": "24cc74449e3931cb1aad0d43a12e7a6e"
+    },
+    "license": "CC0 (as stated in OpenML dataset metadata)",
+    "citation": "Christophe Dutang and Arthur Charpentier (2018), CASdatasets: Insurance datasets."
+  }
+}

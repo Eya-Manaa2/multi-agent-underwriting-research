@@ -8,11 +8,12 @@ class EnhancedDecisionAgent:
     """Enhanced decision agent with all decision types and modes"""
 
     def __init__(self, mode="automated"):
+        if mode not in {"automated", "human_in_the_loop"}:
+            raise ValueError(f"Unknown decision mode: {mode}")
         self.mode = mode  # "automated" or "human_in_the_loop"
         self.escalation_thresholds = {
             'confidence': 0.7,  # Escalate if confidence below this
             'risk_score': 80,  # Escalate if risk score above this
-            'uncertainty': 0.3  # Escalate if uncertainty above this
         }
         print(f"[OK] Enhanced Decision Agent initialized (mode: {self.mode})")
 
@@ -20,9 +21,19 @@ class EnhancedDecisionAgent:
         """Process with all decision types and modes"""
 
         risk_result = all_agent_results.get('risk', {})
+        if risk_result.get('error'):
+            raise RuntimeError(f"Risk evaluation failed: {risk_result['error']}")
+        if risk_result.get('decision') not in {
+            'Accept_Standard',
+            'Accept_with_Surcharge',
+            'Reject',
+        }:
+            raise ValueError('Risk evaluation did not return a valid underwriting recommendation')
         document_result = all_agent_results.get('document', {})
+        uploaded_document = document_result.get('uploaded_document', {})
         claims_result = all_agent_results.get('claims', {})
         customer_result = all_agent_results.get('customer', {})
+        uncertainty_result = all_agent_results.get('uncertainty', {})
 
         # Start with ML decision
         ml_decision = risk_result.get('decision', 'Accept_Standard')
@@ -31,9 +42,20 @@ class EnhancedDecisionAgent:
 
         reasons = ['ML-based primary decision']
         final_decision = ml_decision
+        document_scope_status = uploaded_document.get('scope_status', 'not_provided')
+
+        if uploaded_document.get('provided') and document_scope_status != 'supported':
+            final_decision = 'Escalate_to_Human'
+            reasons.append(
+                'Document scope is unsupported or unverified; no underwriting '
+                'recommendation can be made from this attachment'
+            )
 
         # Override based on document exclusions
-        if document_result.get('exclusions'):
+        if (
+            final_decision != 'Escalate_to_Human'
+            and document_result.get('exclusions')
+        ):
             # Check if exclusion warrants full rejection or exclusion only
             if 'Fraudulent claims' in document_result['exclusions']:
                 final_decision = 'Reject'
@@ -51,15 +73,30 @@ class EnhancedDecisionAgent:
 
         # Escalation logic for human-in-the-loop mode
         if self.mode == "human_in_the_loop":
-            if confidence < self.escalation_thresholds['confidence']:
+            if final_decision == 'Reject':
+                final_decision = 'Escalate_to_Human'
+                reasons.append('A rejection recommendation requires human review')
+            elif confidence < self.escalation_thresholds['confidence']:
                 final_decision = 'Escalate_to_Human'
                 reasons.append(f"Low confidence ({confidence:.2f} < {self.escalation_thresholds['confidence']}) → Escalate to Human")
             elif risk_score > self.escalation_thresholds['risk_score']:
                 final_decision = 'Escalate_to_Human'
                 reasons.append(f"High risk score ({risk_score:.1f} > {self.escalation_thresholds['risk_score']}) → Escalate to Human")
-            elif ml_decision == 'Reject' and customer_result.get('credit_band') == 'Excellent':
+            elif uncertainty_result.get('escalation_recommended'):
                 final_decision = 'Escalate_to_Human'
-                reasons.append('High credit applicant rejected → Escalate to Human for review')
+                uncertainty = uncertainty_result.get('predictive_uncertainty')
+                if isinstance(uncertainty, (int, float)):
+                    reasons.append(
+                        f"Predictive uncertainty too high ({uncertainty:.2f}, level "
+                        f"{uncertainty_result.get('level')}) → Escalate to Human"
+                    )
+                else:
+                    reasons.append(
+                        'Model predictive uncertainty could not be established → Escalate to Human'
+                    )
+            elif ml_decision == 'Reject' and customer_result.get('bonus_malus_band') == 'Excellent':
+                final_decision = 'Escalate_to_Human'
+                reasons.append('Favourable bonus-malus applicant rejected → Escalate to Human for review')
 
         # Calculate final risk score
         final_risk_score = risk_score
@@ -81,9 +118,11 @@ class EnhancedDecisionAgent:
             'confidence': confidence,
             'reasons': reasons,
             'ml_decision': ml_decision,
-            'customer_band': customer_result.get('credit_band'),
+            'customer_band': customer_result.get('bonus_malus_band'),
             'exclusions_found': len(document_result.get('exclusions', [])),
             'fraud_indicators': len(claims_result.get('fraud_indicators', [])),
+            'predictive_uncertainty': uncertainty_result.get('predictive_uncertainty'),
+            'uncertainty_level': uncertainty_result.get('level'),
             'mode': self.mode,
             'escalation_triggered': final_decision == 'Escalate_to_Human'
         }

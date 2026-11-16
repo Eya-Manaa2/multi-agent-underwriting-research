@@ -16,7 +16,7 @@ class ExplanationAgent:
         """Generate explanation for this decision"""
 
         decision = decision_result['final_decision']
-        risk_score = decision_result['risk_score']
+        risk_score = decision_result.get('final_risk_score', decision_result.get('risk_score', 0))
         confidence = decision_result['confidence']
         reasons = decision_result.get('reasons', [])
 
@@ -29,6 +29,29 @@ class ExplanationAgent:
         result['explanations']['customer'] = self._generate_customer_explanation(
             decision, risk_score, reasons
         )
+        uploaded_document = all_agent_results.get('document', {}).get(
+            'uploaded_document', {}
+        )
+        if uploaded_document.get('provided') and uploaded_document.get(
+            'scope_status'
+        ) in {'unsupported', 'unverified'}:
+            result['explanations']['customer'] = {
+                'title': 'Vérification du document requise',
+                'summary': uploaded_document.get(
+                    'scope_reason',
+                    'Le document doit être vérifié par un souscripteur avant toute analyse.',
+                ),
+                'details': [
+                    'Le document fourni ne permet pas d’établir qu’il concerne '
+                    'l’assurance automobile.',
+                    'Aucune recommandation de souscription ne doit être tirée de '
+                    'cette analyse.',
+                ],
+                'next_steps': [
+                    'Vérifier que le dossier concerne bien une assurance automobile.',
+                    'Joindre une pièce automobile lisible puis relancer l’analyse.',
+                ],
+            }
 
         # Regulator-facing explanation (detailed, includes fairness)
         result['explanations']['regulator'] = self._generate_regulator_explanation(
@@ -47,48 +70,72 @@ class ExplanationAgent:
 
         if decision == 'Accept_Standard':
             return {
-                'title': 'Your application has been accepted',
-                'summary': 'Congratulations! Your application meets our standard requirements.',
+                'title': 'Votre dossier reçoit une recommandation favorable',
+                'summary': 'Le modèle estime que le profil correspond aux critères standards du prototype.',
                 'details': [
-                    'Your risk profile is within our acceptable range',
-                    'Standard premium rates apply'
+                    'Cette recommandation est expérimentale et ne vaut pas décision contractuelle.',
+                    'Le résultat doit être vérifié par une personne habilitée.'
                 ],
                 'next_steps': [
-                    'Review your policy documents',
-                    'Make your first premium payment'
+                    'Vérifier les informations déclarées et les conditions du contrat.',
+                    'Confirmer la décision par une revue humaine.'
                 ]
             }
 
         elif decision == 'Accept_with_Surcharge':
             return {
-                'title': 'Your application has been accepted with a surcharge',
-                'summary': 'Your application has been accepted, but a surcharge will apply due to risk factors.',
+                'title': 'Recommandation favorable avec surprime',
+                'summary': 'Le prototype suggère une surprime au regard des facteurs analysés.',
                 'details': [
-                    f'Risk score: {risk_score:.1f}/100',
-                    'Surcharge reflects the additional risk factors identified'
+                    f'Indice de risque heuristique : {risk_score:.1f}/100.',
+                    'Cet indice n’est pas un tarif et doit être interprété avec prudence.'
                 ],
                 'next_steps': [
-                    'Review the surcharge details',
-                    'Contact us if you have questions'
+                    'Faire vérifier les facteurs et le montant par un souscripteur.',
+                    'Ne pas utiliser ce résultat seul pour fixer une prime.'
                 ]
             }
 
-        else:  # Reject
+        elif decision == 'Escalate_to_Human':
             return {
-                'title': 'Your application has been declined',
-                'summary': 'Unfortunately, we cannot accept your application at this time.',
+                'title': 'Revue humaine requise',
+                'summary': 'Le prototype ne prend pas de décision finale et demande une vérification par un souscripteur.',
                 'details': [
-                    f'Risk score: {risk_score:.1f}/100',
-                    'The identified risk factors exceed our acceptance criteria'
+                    f'Indice de risque heuristique : {risk_score:.1f}/100.',
+                    'Une recommandation de refus est toujours transmise à une revue humaine.'
                 ],
                 'next_steps': [
-                    'You can appeal this decision',
-                    'Contact our customer service for more information'
+                    'Examiner les facteurs et les données du dossier.',
+                    'Documenter la décision humaine et ses motifs.'
+                ]
+            }
+
+        elif decision == 'Accept_with_Exclusion':
+            return {
+                'title': 'Revue des exclusions requise',
+                'summary': 'Le prototype a signalé une exclusion potentielle à vérifier dans les documents contractuels.',
+                'details': [f'Indice de risque heuristique : {risk_score:.1f}/100.'],
+                'next_steps': ['Vérifier le texte contractuel applicable avant toute décision.']
+            }
+
+        else:
+            return {
+                'title': 'Recommandation de refus — revue humaine obligatoire',
+                'summary': 'Le prototype identifie des éléments justifiant une analyse approfondie, mais ne peut pas prononcer de refus.',
+                'details': [
+                    f'Indice de risque heuristique : {risk_score:.1f}/100.',
+                    'Le refus ne peut être confirmé que par une personne habilitée.'
+                ],
+                'next_steps': [
+                    'Revoir le dossier et les explications fournies.',
+                    'Consigner les motifs et les voies de recours applicables.'
                 ]
             }
 
     def _generate_regulator_explanation(self, decision, risk_score, confidence, all_agent_results):
         """Generate detailed explanation for regulator"""
+        fairness_result = all_agent_results.get('fairness', {})
+        compliance_result = all_agent_results.get('compliance', {})
 
         explanation = {
             'title': f'Regulatory explanation for {decision} decision',
@@ -96,8 +143,14 @@ class ExplanationAgent:
             'risk_score': risk_score,
             'confidence': confidence,
             'factors_considered': [],
-            'fairness_assessment': 'Passed' if decision != 'Reject' else 'Review required',
-            'compliance_status': 'Compliant'
+            'fairness_assessment': (
+                'Review required'
+                if fairness_result.get('review_required')
+                else 'Not conclusively assessed'
+            ),
+            'compliance_status': compliance_result.get(
+                'compliance_status', 'Not assessed'
+            ),
         }
 
         # List factors from each agent

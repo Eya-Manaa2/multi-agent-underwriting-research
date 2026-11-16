@@ -1,237 +1,154 @@
-"""
-Ablation Study: Compare pipeline performance with/without different components
+"""Agent ablation study on the real freMTPL2 underwriting pipeline.
+
+Research axis "ablation" (report/cadrage.md section 6.2 / 7.3): what does each agent
+actually contribute to the recommendation produced by the eleven-agent LangGraph
+pipeline? Every ablatable agent is removed in turn (leave-one-out) on a bounded
+stratified sample of the real hold-out partition, and the result is compared with the
+full pipeline on the *same* cases:
+
+* **decision change rate** — share of cases whose final recommendation changes when
+  the agent is removed (0 means the agent never altered the recommendation);
+* **discrimination** — ROC-AUC / PR-AUC of the final risk score;
+* **report completeness** — number of agents still contributing to the consolidated
+  report, which exposes the agents that only feed governance rather than the decision.
+
+The core chain (intake, risk, decision) is structural and cannot be removed: without a
+risk estimate or a decision there is no recommendation to measure.
 """
 
-import json
-import numpy as np
-from pathlib import Path
+from __future__ import annotations
+
+import contextlib
+import io
 import sys
+import time
+from pathlib import Path
 
-# Add agents directory to path
-agents_dir = Path(__file__).parent.parent.parent / "agents"
-sys.path.append(str(agents_dir))
+import numpy as np
 
-from intake_agent import IntakeAgent
-from customer_agent import CustomerAgent
-from risk_agent import RiskAgent
-from document_agent import DocumentAgent
-from external_agent import ExternalAgent
-from claims_agent import ClaimsAgent
-from decision_agent_enhanced import EnhancedDecisionAgent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from experiments.baselines.evaluation import (  # noqa: E402
+    RANDOM_STATE,
+    agreement_rate,
+    decision_summary,
+    holdout_partition,
+    save_result,
+    score_metrics,
+    stratified_sample,
+)
+from orchestrator.langgraph_orchestrator import (  # noqa: E402
+    AGENT_NODES,
+    LangGraphOrchestrator,
+)
+
+RESULTS_DIR = PROJECT_ROOT / 'experiments' / 'ablation' / 'results'
+DEFAULT_SAMPLE_SIZE = 100
+# The pilot's frozen decision mode is human-in-the-loop; ``automated`` is kept as the
+# reference configuration used by the B4 baseline. Collaboration mode is fixed to
+# ``sequential`` so the ablation isolates the *decision* configuration.
+COLLABORATION_MODE = 'sequential'
+MODES = ('automated', 'human_in_the_loop')
+# Agents that can be removed without breaking the decision chain. The three others
+# (intake, risk, decision) are structural.
+STRUCTURAL_AGENTS = ('intake', 'risk', 'decision')
+ABLATABLE_AGENTS = tuple(name for name in AGENT_NODES if name not in STRUCTURAL_AGENTS)
 
 
-def run_ablation_experiment(data_path, configuration):
-    """
-    Run pipeline with specified configuration
+def _application(record, position) -> dict:
+    """Build a valid application from a real freMTPL2 record."""
+    application = {'application_id': f'ABL-{int(position)}', 'product_line': 'auto'}
+    application.update(record)
+    return application
 
-    Configuration is a dict with keys:
-    - include_intake: bool
-    - include_customer: bool
-    - include_document: bool
-    - include_external: bool
-    - include_claims: bool
-    - mode: "automated" or "human_in_the_loop"
-    """
 
-    # Load data
-    with open(data_path, 'r') as f:
-        data = json.load(f)
-
-    # Initialize agents based on configuration
-    agents = {}
-    if configuration.get('include_intake', True):
-        agents['intake'] = IntakeAgent()
-    if configuration.get('include_customer', True):
-        agents['customer'] = CustomerAgent()
-    if configuration.get('include_document', True):
-        agents['document'] = DocumentAgent()
-    if configuration.get('include_external', True):
-        agents['external'] = ExternalAgent()
-    if configuration.get('include_claims', True):
-        agents['claims'] = ClaimsAgent()
-
-    # Always include risk (ML) and decision
-    agents['risk'] = RiskAgent()
-    agents['decision'] = EnhancedDecisionAgent(mode=configuration.get('mode', 'automated'))
-
-    print(f"[Ablation] Configuration: {configuration}")
-    print(f"[Ablation] Active agents: {list(agents.keys())}")
-
-    # Evaluate all records
-    results = []
-    correct = 0
-
-    for i, record in enumerate(data):
-        if (i + 1) % 500 == 0:
-            print(f"Processing {i+1}/{len(data)}...")
-
-        # Prepare application data
-        application = {
-            'application_id': record.get('application_id'),
-            'age': record.get('age'),
-            'credit_score': record.get('credit_score'),
-            'vehicle_value': record.get('vehicle_value'),
-            'premium_amount': record.get('premium_amount'),
-            'claim_amount': record.get('claim_amount'),
-            'fraud_flag': record.get('fraud_flag'),
-            'location': 'suburban',
-        }
-
-        # Run agents
-        agent_results = {}
-
-        if 'intake' in agents:
-            agent_results['intake'] = agents['intake'].process(application)
-
-        if 'customer' in agents:
-            agent_results['customer'] = agents['customer'].process(
-                application,
-                agent_results.get('intake', {})
+def _run_configuration(orchestrator, records, positions, decision_mode, disabled) -> dict:
+    """Run the pipeline once with ``disabled`` agents ablated; collect the outcomes."""
+    decisions, scores, report_agents = [], [], []
+    started = time.perf_counter()
+    # The agents are chatty on stdout; keep the research output readable.
+    with contextlib.redirect_stdout(io.StringIO()):
+        for record, position in zip(records, positions):
+            state = orchestrator.run_workflow(
+                _application(record, position),
+                mode=COLLABORATION_MODE,
+                decision_mode=decision_mode,
+                disabled_agents=disabled,
             )
-
-        if 'risk' in agents:
-            agent_results['risk'] = agents['risk'].process(
-                application,
-                agent_results.get('intake', {}),
-                agent_results.get('customer', {})
-            )
-
-        if 'document' in agents:
-            agent_results['document'] = agents['document'].process(
-                application,
-                agent_results.get('risk', {})
-            )
-
-        if 'external' in agents:
-            agent_results['external'] = agents['external'].process(application)
-
-        if 'claims' in agents:
-            agent_results['claims'] = agents['claims'].process(application)
-
-        if 'decision' in agents:
-            agent_results['decision'] = agents['decision'].process(application, agent_results)
-
-        # Evaluate
-        result = agent_results['decision']
-        result['true_decision'] = record.get('decision')
-
-        # Check accuracy (exclude Escalate_to_Human from accuracy calc)
-        if result['final_decision'] == result['true_decision']:
-            correct += 1
-
-        results.append(result)
-
-    # Calculate metrics
-    # Exclude escalations from accuracy calculation
-    non_escalated = [r for r in results if r['final_decision'] != 'Escalate_to_Human']
-    correct_non_escalated = sum(1 for r in non_escalated if r['final_decision'] == r['true_decision'])
-    accuracy = correct_non_escalated / len(non_escalated) if non_escalated else 0
-
-    # Decision distribution
-    decisions = [r['final_decision'] for r in results]
-    decision_counts = {}
-    for d in decisions:
-        d_str = str(d)  # Convert numpy string to regular string
-        decision_counts[d_str] = decision_counts.get(d_str, 0) + 1
-
-    # Escalation rate
-    escalation_rate = decisions.count('Escalate_to_Human') / len(results)
-
-    # Confidence statistics
-    confidences = [r['confidence'] for r in results]
-    mean_confidence = sum(confidences) / len(confidences)
-
-    print(f"\n[Ablation] Results:")
-    print(f"  Accuracy (non-escalated): {accuracy:.4f}")
-    print(f"  Correct: {correct_non_escalated}/{len(non_escalated)}")
-    print(f"  Escalation rate: {escalation_rate:.4f}")
-    print(f"  Mean confidence: {mean_confidence:.4f}")
-    print(f"  Decision distribution: {decision_counts}")
-
+            decision_result = state['decision_result']
+            decisions.append(decision_result['final_decision'])
+            scores.append(float(decision_result['final_risk_score']) / 100.0)
+            report_agents.append(len(state['report_result']['provenance']['agents']))
+    elapsed = time.perf_counter() - started
     return {
-        'configuration': configuration,
-        'accuracy': accuracy,
-        'escalation_rate': escalation_rate,
-        'mean_confidence': mean_confidence,
-        'decision_distribution': decision_counts,
-        'results': results
+        'disabled_agents': list(disabled),
+        'decisions': decisions,
+        'agents_in_report': float(np.mean(report_agents)),
+        'latency_seconds_per_case': elapsed / len(records) if records else 0.0,
+        'scores': scores,
     }
 
 
-def run_full_ablation_study(data_path):
-    """Run multiple ablation experiments"""
+def _ablate_mode(orchestrator, records, index, y_true, mode) -> dict:
+    """Run the full pipeline and every leave-one-out configuration in one mode."""
+    baseline_raw = _run_configuration(orchestrator, records, index, mode, ())
+    baseline = {k: v for k, v in baseline_raw.items() if k != 'scores'}
+    baseline.update(decision_summary(y_true, baseline_raw['decisions']))
+    baseline.update(score_metrics(y_true, baseline_raw['scores']))
 
-    print("=" * 60)
-    print("Ablation Study: Impact of Different Components")
-    print("=" * 60)
+    ablations = {}
+    for agent in ABLATABLE_AGENTS:
+        raw = _run_configuration(orchestrator, records, index, mode, (agent,))
+        entry = {k: v for k, v in raw.items() if k != 'scores'}
+        entry['decision_change_rate'] = 1.0 - agreement_rate(
+            baseline_raw['decisions'], raw['decisions']
+        )
+        entry.update(decision_summary(y_true, raw['decisions']))
+        entry.update(score_metrics(y_true, raw['scores']))
+        ablations[agent] = entry
+    return {'mode': mode, 'baseline': baseline, 'ablations': ablations}
 
-    ablation_results = []
 
-    # Configuration 1: Full pipeline (baseline)
-    config1 = {
-        'include_intake': True,
-        'include_customer': True,
-        'include_document': True,
-        'include_external': True,
-        'include_claims': True,
-        'mode': 'automated'
+def run(sample_size=DEFAULT_SAMPLE_SIZE, seed=RANDOM_STATE) -> dict:
+    """Leave-one-out ablation of the pipeline agents on the real hold-out."""
+    holdout = holdout_partition()
+    index = stratified_sample(
+        holdout['test_indices'], holdout['targets'], sample_size, seed
+    )
+    y_true = np.asarray(holdout['targets'][index])
+    records = [holdout['records'][position] for position in index]
+
+    orchestrator = LangGraphOrchestrator()
+    return {
+        'experiment': 'ablation',
+        'status': 'ok',
+        'description': 'leave-one-out ablation of the eleven-agent pipeline',
+        'structural_agents': list(STRUCTURAL_AGENTS),
+        'sample_size': int(len(index)),
+        'sample_seed': seed,
+        'modes': {
+            mode: _ablate_mode(orchestrator, records, index, y_true, mode)
+            for mode in MODES
+        },
     }
-    result1 = run_ablation_experiment(data_path, config1)
-    ablation_results.append(('Full Pipeline', result1))
-
-    # Configuration 2: Without Document, External, Claims
-    config2 = {
-        'include_intake': True,
-        'include_customer': True,
-        'include_document': False,
-        'include_external': False,
-        'include_claims': False,
-        'mode': 'automated'
-    }
-    result2 = run_ablation_experiment(data_path, config2)
-    ablation_results.append(('Without Document/External/Claims', result2))
-
-    # Configuration 3: ML Only (Risk + Decision)
-    config3 = {
-        'include_intake': False,
-        'include_customer': False,
-        'include_document': False,
-        'include_external': False,
-        'include_claims': False,
-        'mode': 'automated'
-    }
-    result3 = run_ablation_experiment(data_path, config3)
-    ablation_results.append(('ML Only', result3))
-
-    # Configuration 4: Full Pipeline with Human-in-the-Loop
-    config4 = {
-        'include_intake': True,
-        'include_customer': True,
-        'include_document': True,
-        'include_external': True,
-        'include_claims': True,
-        'mode': 'human_in_the_loop'
-    }
-    result4 = run_ablation_experiment(data_path, config4)
-    ablation_results.append(('Full Pipeline (Human-in-the-Loop)', result4))
-
-    # Print comparison
-    print("\n" + "=" * 60)
-    print("Ablation Comparison")
-    print("=" * 60)
-
-    for name, result in ablation_results:
-        print(f"\n{name}:")
-        print(f"  Accuracy: {result['accuracy']:.4f}")
-        print(f"  Escalation rate: {result['escalation_rate']:.4f}")
-        print(f"  Mean confidence: {result['mean_confidence']:.4f}")
-
-    print(f"\nAblation results complete")
-    print(f"Results are displayed above")
-
-    return ablation_results
 
 
-if __name__ == "__main__":
-    data_path = "data/processed/labeled_research_data_improved.json"
-    results = run_full_ablation_study(data_path)
+if __name__ == '__main__':
+    result = run()
+    print(f"Sample: {result['sample_size']} policies (seed {result['sample_seed']})")
+    for mode, block in result['modes'].items():
+        base = block['baseline']
+        print(f"\n=== mode {mode} ===")
+        print(
+            f"Full pipeline: ROC-AUC {base['roc_auc']:.4f} | "
+            f"decisions {base['decision_counts']} | "
+            f"agents in report {base['agents_in_report']:.1f}"
+        )
+        for agent, entry in block['ablations'].items():
+            print(
+                f"  -{agent:12s} decision change {entry['decision_change_rate']:.4f} | "
+                f"ROC-AUC {entry['roc_auc']:.4f} | agents {entry['agents_in_report']:.1f}"
+            )
+    print(f"\nSaved: {save_result('ablation', result, directory=RESULTS_DIR)}")

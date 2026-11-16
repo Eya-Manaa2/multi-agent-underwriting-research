@@ -3,20 +3,19 @@ Agent 1: Intake/Validation Agent
 Validates application completeness and normalizes data
 """
 
-import json
-from pathlib import Path
-from typing import Dict, List
+from typing import Dict
+
+from agents.intake_agent import IntakeAgent as ApplicationIntakeAgent
+from utils.actuarial_features import AREA_CODES, VEHICLE_GAS_CODES
+
 
 class IntakeAgent:
     """Intake and validation agent"""
 
     def __init__(self):
-        self.required_fields = [
-            'age', 'credit_score', 'vehicle_value', 'premium_amount',
-            'claim_amount', 'fraud_flag'
-        ]
-        self.valid_regions = ['North', 'South', 'East', 'West']
-        self.valid_genders = ['Male', 'Female', 'Other']
+        self.validator = ApplicationIntakeAgent()
+        self.valid_areas = list(AREA_CODES)
+        self.valid_vehicle_gas = list(VEHICLE_GAS_CODES)
 
     def validate(self, application: Dict) -> Dict:
         """
@@ -25,52 +24,26 @@ class IntakeAgent:
         Returns:
             dict: {is_valid, missing_fields, errors, normalized_data}
         """
-        missing_fields = []
-        errors = []
-        normalized = application.copy()
+        prepared = self.validator.process(application)
+        errors = list(prepared['errors'])
+        normalized = application.copy() if isinstance(application, dict) else {}
 
-        # Check required fields
-        for field in self.required_fields:
-            if field not in application or application[field] is None:
-                missing_fields.append(field)
+        for field, allowed in (
+            ('area', self.valid_areas),
+            ('vehicle_gas', self.valid_vehicle_gas),
+        ):
+            if field in normalized and normalized[field] not in allowed:
+                errors.append(f"Invalid {field}: {normalized[field]}")
 
-        # Validate age
-        if 'age' in application:
-            age = application['age']
-            if not isinstance(age, (int, float)) or age < 18 or age > 100:
-                errors.append(f"Invalid age: {age}")
-                normalized['age'] = 30  # Default value
-
-        # Validate credit score
-        if 'credit_score' in application:
-            credit = application['credit_score']
-            if not isinstance(credit, (int, float)) or credit < 300 or credit > 850:
-                errors.append(f"Invalid credit score: {credit}")
-                normalized['credit_score'] = 500  # Default value
-
-        # Validate region
-        if 'region' in application:
-            region = application['region']
-            if region not in self.valid_regions:
-                errors.append(f"Invalid region: {region}")
-                normalized['region'] = 'North'  # Default value
-
-        # Validate gender
-        if 'gender' in application:
-            gender = application['gender']
-            if gender not in self.valid_genders:
-                errors.append(f"Invalid gender: {gender}")
-                normalized['gender'] = 'Other'  # Default value
-
-        is_valid = len(missing_fields) == 0 and len(errors) == 0
+        is_valid = prepared['status'] == 'validated' and not errors
 
         return {
             'is_valid': is_valid,
-            'missing_fields': missing_fields,
+            'missing_fields': prepared['missing_fields'],
             'errors': errors,
             'normalized_data': normalized,
             'agent': 'intake',
-            'confidence': 1.0 if is_valid else 0.5
+            'confidence': 1.0 if is_valid else 0.0
         }
 
 
@@ -82,16 +55,15 @@ def test_intake_agent():
 
     agent = IntakeAgent()
 
-    # Test 1: Valid application
+    # Test 1: Valid application (real freMTPL2 schema)
     valid_app = {
-        'age': 35,
-        'gender': 'Male',
-        'region': 'North',
-        'credit_score': 650,
-        'vehicle_value': 25000,
-        'premium_amount': 1200,
-        'claim_amount': 5000,
-        'fraud_flag': False
+        'driver_age': 35,
+        'bonus_malus': 60.0,
+        'vehicle_age': 5,
+        'vehicle_power': 6,
+        'vehicle_gas': 'Regular',
+        'density': 1200.0,
+        'area': 'C',
     }
 
     result = agent.validate(valid_app)
@@ -102,14 +74,13 @@ def test_intake_agent():
 
     # Test 2: Invalid application
     invalid_app = {
-        'age': 150,  # Invalid
-        'credit_score': 200,  # Invalid
-        'region': 'Mars',  # Invalid
-        'gender': 'Alien',  # Invalid
-        'vehicle_value': 25000,
-        'premium_amount': 1200,
-        'claim_amount': 5000,
-        'fraud_flag': False
+        'driver_age': 150,  # Invalid
+        'bonus_malus': 60.0,
+        'vehicle_age': 5,
+        'vehicle_power': 6,
+        'vehicle_gas': 'Steam',  # Invalid
+        'density': 1200.0,
+        'area': 'Z',  # Invalid
     }
 
     result = agent.validate(invalid_app)
@@ -117,8 +88,6 @@ def test_intake_agent():
     print(f"  Is valid: {result['is_valid']}")
     print(f"  Missing fields: {result['missing_fields']}")
     print(f"  Errors: {result['errors']}")
-    print(f"  Normalized age: {result['normalized_data']['age']}")
-    print(f"  Normalized credit_score: {result['normalized_data']['credit_score']}")
 
     print("\n" + "=" * 60)
     print("Intake Agent Test Complete")

@@ -1,0 +1,313 @@
+{
+  "_meta": {
+    "version": "1.0.0-fremtpl2",
+    "updated_at": "2026-11-09T15:44:34+00:00",
+    "description": "Jeu de cas de démonstration : polices réelles freMTPL2 (champs réels + issue observée réelle), pour tester l’app sur des données réelles. La recommandation produite reste une convention de recherche, pas une décision d’assureur.",
+    "usage": "Recopier les champs de \"profile\" dans le formulaire de l’app ; mettre \"application_id\" pour retrouver, le cas échéant, les antécédents réels.",
+    "source": "freMTPL2 (OpenML) — polices réelles, champs et issue observée",
+    "license": "CC0 (as stated in OpenML dataset metadata)",
+    "citation": "Christophe Dutang and Arthur Charpentier (2018), CASdatasets: Insurance datasets."
+  },
+  "cases": [
+    {
+      "case_id": "REAL-01",
+      "application_id": "35",
+      "profile": {
+        "driver_age": 23,
+        "bonus_malus": 100.0,
+        "vehicle_age": 9,
+        "vehicle_power": 4,
+        "vehicle_gas": "Regular",
+        "density": 7887.0,
+        "area": "E"
+      },
+      "observed": {
+        "claim_count": 1,
+        "claim_occurred": true,
+        "exposure_years": 0.76,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-02",
+      "application_id": "49",
+      "profile": {
+        "driver_age": 73,
+        "bonus_malus": 50.0,
+        "vehicle_age": 0,
+        "vehicle_power": 7,
+        "vehicle_gas": "Regular",
+        "density": 3317.0,
+        "area": "E"
+      },
+      "observed": {
+        "claim_count": 2,
+        "claim_occurred": true,
+        "exposure_years": 0.81,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-03",
+      "application_id": "72",
+      "profile": {
+        "driver_age": 23,
+        "bonus_malus": 85.0,
+        "vehicle_age": 0,
+        "vehicle_power": 4,
+        "vehicle_gas": "Regular",
+        "density": 533.0,
+        "area": "D"
+      },
+      "observed": {
+        "claim_count": 1,
+        "claim_occurred": true,
+        "exposure_years": 0.39,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-04",
+      "application_id": "778",
+      "profile": {
+        "driver_age": 63,
+        "bonus_malus": 50.0,
+        "vehicle_age": 0,
+        "vehicle_power": 6,
+        "vehicle_gas": "Regular",
+        "density": 21.0,
+        "area": "A"
+      },
+      "observed": {
+        "claim_count": 2,
+        "claim_occurred": true,
+        "exposure_years": 0.79,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-05",
+      "application_id": "24952",
+      "profile": {
+        "driver_age": 50,
+        "bonus_malus": 50.0,
+        "vehicle_age": 15,
+        "vehicle_power": 6,
+        "vehicle_gas": "Diesel",
+        "density": 29.0,
+        "area": "A"
+      },
+      "observed": {
+        "claim_count": 0,
+        "claim_occurred": false,
+        "exposure_years": 0.0055,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-06",
+      "application_id": "24953",
+      "profile": {
+        "driver_age": 50,
+        "bonus_malus": 50.0,
+        "vehicle_age": 15,
+        "vehicle_power": 6,
+        "vehicle_gas": "Diesel",
+        "density": 29.0,
+        "area": "A"
+      },
+      "observed": {
+        "claim_count": 0,
+        "claim_occurred": false,
+        "exposure_years": 0.67,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-07",
+      "application_id": "26096",
+      "profile": {
+        "driver_age": 60,
+        "bonus_malus": 115.0,
+        "vehicle_age": 5,
+        "vehicle_power": 5,
+        "vehicle_gas": "Diesel",
+        "density": 3541.0,
+        "area": "E"
+      },
+      "observed": {
+        "claim_count": 0,
+        "claim_occurred": false,
+        "exposure_years": 1.0,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-08",
+      "application_id": "26188",
+      "profile": {
+        "driver_age": 27,
+        "bonus_malus": 118.0,
+        "vehicle_age": 16,
+        "vehicle_power": 7,
+        "vehicle_gas": "Regular",
+        "density": 3541.0,
+        "area": "E"
+      },
+      "observed": {
+        "claim_count": 0,
+        "claim_occurred": false,
+        "exposure_years": 0.04,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-09",
+      "application_id": "36446",
+      "profile": {
+        "driver_age": 30,
+        "bonus_malus": 165.0,
+        "vehicle_age": 15,
+        "vehicle_power": 5,
+        "vehicle_gas": "Regular",
+        "density": 16533.0,
+        "area": "F"
+      },
+      "observed": {
+        "claim_count": 0,
+        "claim_occurred": false,
+        "exposure_years": 0.24,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-10",
+      "application_id": "39221",
+      "profile": {
+        "driver_age": 22,
+        "bonus_malus": 156.0,
+        "vehicle_age": 11,
+        "vehicle_power": 9,
+        "vehicle_gas": "Regular",
+        "density": 3368.0,
+        "area": "E"
+      },
+      "observed": {
+        "claim_count": 0,
+        "claim_occurred": false,
+        "exposure_years": 0.37,
+        "prior_claim_amounts_available": 0
+      },
+      "in_claims_history_reference": false
+    },
+    {
+      "case_id": "REAL-11",
+      "application_id": "48174",
+      "profile": {
+        "driver_age": 22,
+        "bonus_malus": 106.0,
+        "vehicle_age": 4,
+        "vehicle_power": 8,
+        "vehicle_gas": "Diesel",
+        "density": 107.0,
+        "area": "C"
+      },
+      "observed": {
+        "claim_count": 3,
+        "claim_occurred": true,
+        "exposure_years": 0.51,
+        "prior_claim_amounts_available": 3
+      },
+      "in_claims_history_reference": true
+    },
+    {
+      "case_id": "REAL-12",
+      "application_id": "54009",
+      "profile": {
+        "driver_age": 46,
+        "bonus_malus": 50.0,
+        "vehicle_age": 4,
+        "vehicle_power": 4,
+        "vehicle_gas": "Diesel",
+        "density": 29.0,
+        "area": "A"
+      },
+      "observed": {
+        "claim_count": 4,
+        "claim_occurred": true,
+        "exposure_years": 0.56,
+        "prior_claim_amounts_available": 4
+      },
+      "in_claims_history_reference": true
+    },
+    {
+      "case_id": "REAL-13",
+      "application_id": "61021",
+      "profile": {
+        "driver_age": 35,
+        "bonus_malus": 75.0,
+        "vehicle_age": 7,
+        "vehicle_power": 6,
+        "vehicle_gas": "Diesel",
+        "density": 1601.0,
+        "area": "D"
+      },
+      "observed": {
+        "claim_count": 3,
+        "claim_occurred": true,
+        "exposure_years": 1.0,
+        "prior_claim_amounts_available": 3
+      },
+      "in_claims_history_reference": true
+    },
+    {
+      "case_id": "REAL-14",
+      "application_id": "69408",
+      "profile": {
+        "driver_age": 77,
+        "bonus_malus": 50.0,
+        "vehicle_age": 1,
+        "vehicle_power": 6,
+        "vehicle_gas": "Regular",
+        "density": 342.0,
+        "area": "C"
+      },
+      "observed": {
+        "claim_count": 3,
+        "claim_occurred": true,
+        "exposure_years": 0.84,
+        "prior_claim_amounts_available": 3
+      },
+      "in_claims_history_reference": true
+    },
+    {
+      "case_id": "REAL-15",
+      "application_id": "78130",
+      "profile": {
+        "driver_age": 25,
+        "bonus_malus": 95.0,
+        "vehicle_age": 7,
+        "vehicle_power": 7,
+        "vehicle_gas": "Regular",
+        "density": 2620.0,
+        "area": "E"
+      },
+      "observed": {
+        "claim_count": 3,
+        "claim_occurred": true,
+        "exposure_years": 0.77,
+        "prior_claim_amounts_available": 3
+      },
+      "in_claims_history_reference": true
+    }
+  ]
+}

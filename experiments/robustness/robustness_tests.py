@@ -1,240 +1,158 @@
-"""
-Robustness Tests
-- Missing fields
-- Noise perturbations
-- Out of distribution samples
+"""Robustness of the shipped freMTPL2 claim model under degraded inputs.
+
+Research axis "robustesse" (report/cadrage.md section 7.2): how much does the real
+claim model degrade when the incoming application data is noisy or incomplete?
+
+Two realistic degradations are applied to a bounded stratified sample of the real
+hold-out partition, and the discrimination metrics are compared with the clean
+baseline:
+
+* **noise**  : additive Gaussian noise on the numeric fields, scaled by the field's
+  own standard deviation (1 %, 5 %, 10 %, 20 %), values re-clipped to the observed
+  ranges;
+* **missing**: parts of the numeric fields become unavailable — either a random
+  fraction of cells (10 %, 30 %) or one whole field at a time, set to NaN. XGBoost
+  handles missing values natively, so this exercises the real inference path rather
+  than an imputation the model never saw.
+
+No value is invented: the clean metrics are the reference and every degraded run is
+compared against them on the same cases.
 """
 
-import json
-import numpy as np
-from pathlib import Path
+from __future__ import annotations
+
 import sys
-import os
+from pathlib import Path
 
-# Add agents directory to path
-agents_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'agents'))
-sys.path.append(agents_dir)
+import numpy as np
 
-from risk_agent import RiskAgent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
+from agents.risk_agent import RiskAgent  # noqa: E402
+from experiments.baselines.evaluation import (  # noqa: E402
+    RANDOM_STATE,
+    holdout_partition,
+    save_result,
+    score_metrics,
+    stratified_sample,
+)
+from utils.actuarial_features import FEATURE_NAMES  # noqa: E402
 
-def test_missing_fields(data_path):
-    """Test robustness to missing fields"""
+RESULTS_DIR = PROJECT_ROOT / 'experiments' / 'robustness' / 'results'
 
-    print("=" * 60)
-    print("Robustness Test: Missing Fields")
-    print("=" * 60)
-
-    # Load data
-    with open(data_path, 'r') as f:
-        data = json.load(f)
-
-    # Initialize agent
-    risk_agent = RiskAgent()
-
-    # Test scenarios
-    scenarios = [
-        {'name': 'Missing age', 'remove': 'age'},
-        {'name': 'Missing credit_score', 'remove': 'credit_score'},
-        {'name': 'Missing vehicle_value', 'remove': 'vehicle_value'},
-        {'name': 'Missing premium_amount', 'remove': 'premium_amount'},
-        {'name': 'Missing claim_amount', 'remove': 'claim_amount'},
-        {'name': 'Missing fraud_flag', 'remove': 'fraud_flag'},
-    ]
-
-    results = {}
-
-    for scenario in scenarios:
-        print(f"\nScenario: {scenario['name']}")
-
-        correct = 0
-        total = len(data)
-
-        for record in data:
-            # Create application with missing field
-            application = {
-                'application_id': record.get('application_id'),
-                'age': record.get('age'),
-                'credit_score': record.get('credit_score'),
-                'vehicle_value': record.get('vehicle_value'),
-                'premium_amount': record.get('premium_amount'),
-                'claim_amount': record.get('claim_amount'),
-                'fraud_flag': record.get('fraud_flag'),
-                'location': 'suburban',
-            }
-
-            # Remove field
-            field_to_remove = scenario['remove']
-            if field_to_remove in application:
-                del application[field_to_remove]
-
-            # Process
-            intake_result = {'valid': True, 'missing_fields': [field_to_remove]}
-            customer_result = {'credit_risk': 'medium'}
-            risk_result = risk_agent.process(application, intake_result, customer_result)
-
-            # Evaluate
-            if risk_result['decision'] == record.get('decision'):
-                correct += 1
-
-        accuracy = correct / total
-        results[scenario['name']] = accuracy
-        print(f"  Accuracy: {accuracy:.4f} ({correct}/{total})")
-
-    return results
+DEFAULT_SAMPLE_SIZE = 10000
+NOISE_LEVELS = (0.01, 0.05, 0.10, 0.20)
+MISSING_CELL_LEVELS = (0.10, 0.30)
+# Columns of the encoded feature vector that carry continuous magnitudes. The two
+# remaining columns (vehicle_gas, area) are category codes, not magnitudes.
+NUMERIC_COLUMNS = (0, 1, 2, 3, 5)  # driver_age, bonus_malus, vehicle_age, vehicle_power, density
+# Among them, the genuinely integer fields: noise must keep them integral.
+INTEGER_COLUMNS = (0, 2, 3)  # driver_age, vehicle_age, vehicle_power
 
 
-def test_noise_perturbation(data_path):
-    """Test robustness to noise perturbations"""
-
-    print("\n" + "=" * 60)
-    print("Robustness Test: Noise Perturbation")
-    print("=" * 60)
-
-    # Load data
-    with open(data_path, 'r') as f:
-        data = json.load(f)
-
-    # Initialize agent
-    risk_agent = RiskAgent()
-
-    # Test noise levels
-    noise_levels = [0.05, 0.10, 0.20, 0.50]  # 5%, 10%, 20%, 50% noise
-
-    results = {}
-
-    for noise_level in noise_levels:
-        print(f"\nNoise level: {noise_level*100:.0f}%")
-
-        correct = 0
-        total = len(data)
-
-        for record in data:
-            # Create application
-            application = {
-                'application_id': record.get('application_id'),
-                'age': record.get('age'),
-                'credit_score': record.get('credit_score'),
-                'vehicle_value': record.get('vehicle_value'),
-                'premium_amount': record.get('premium_amount'),
-                'claim_amount': record.get('claim_amount'),
-                'fraud_flag': record.get('fraud_flag'),
-                'location': 'suburban',
-            }
-
-            # Add noise to numeric fields
-            for field in ['age', 'credit_score', 'vehicle_value', 'premium_amount', 'claim_amount']:
-                if field in application and application[field] is not None:
-                    original = application[field]
-                    noise = np.random.normal(0, original * noise_level)
-                    application[field] = max(0, original + noise)  # Ensure non-negative
-
-            # Process
-            intake_result = {'valid': True}
-            customer_result = {'credit_risk': 'medium'}
-            risk_result = risk_agent.process(application, intake_result, customer_result)
-
-            # Evaluate
-            if risk_result['decision'] == record.get('decision'):
-                correct += 1
-
-        accuracy = correct / total
-        results[f'noise_{noise_level}'] = accuracy
-        print(f"  Accuracy: {accuracy:.4f} ({correct}/{total})")
-
-    return results
+def _probabilities(model, features) -> np.ndarray:
+    return model.predict_proba(features)[:, 1]
 
 
-def test_out_of_distribution(data_path):
-    """Test robustness to out-of-distribution samples"""
-
-    print("\n" + "=" * 60)
-    print("Robustness Test: Out-of-Distribution Samples")
-    print("=" * 60)
-
-    # Initialize agent
-    risk_agent = RiskAgent()
-
-    # Create extreme OOD samples
-    ood_samples = [
-        {'name': 'Very high value', 'age': 18, 'credit_score': 850, 'vehicle_value': 500000, 'premium_amount': 10000, 'claim_amount': 0, 'fraud_flag': False},
-        {'name': 'Very old applicant', 'age': 90, 'credit_score': 300, 'vehicle_value': 5000, 'premium_amount': 500, 'claim_amount': 0, 'fraud_flag': False},
-        {'name': 'Very high claims', 'age': 30, 'credit_score': 500, 'vehicle_value': 20000, 'premium_amount': 1000, 'claim_amount': 100000, 'fraud_flag': False},
-        {'name': 'Zero premium', 'age': 30, 'credit_score': 500, 'vehicle_value': 20000, 'premium_amount': 0, 'claim_amount': 0, 'fraud_flag': False},
-    ]
-
-    results = {}
-
-    for sample in ood_samples:
-        print(f"\nSample: {sample['name']}")
-
-        application = {
-            'application_id': 99999,
-            'age': sample['age'],
-            'credit_score': sample['credit_score'],
-            'vehicle_value': sample['vehicle_value'],
-            'premium_amount': sample['premium_amount'],
-            'claim_amount': sample['claim_amount'],
-            'fraud_flag': sample['fraud_flag'],
-            'location': 'suburban',
-        }
-
-        # Process
-        intake_result = {'valid': True}
-        customer_result = {'credit_risk': 'medium'}
-        risk_result = risk_agent.process(application, intake_result, customer_result)
-
-        print(f"  Decision: {risk_result['decision']}")
-        print(f"  Confidence: {risk_result['confidence']:.4f}")
-        print(f"  Risk Score: {risk_result['risk_score']:.2f}")
-
-        results[sample['name']] = {
-            'decision': risk_result['decision'],
-            'confidence': risk_result['confidence'],
-            'risk_score': risk_result['risk_score']
-        }
-
-    return results
+def _noisy(features, level, rng) -> np.ndarray:
+    """Additive Gaussian noise on the numeric fields, scaled by column std."""
+    degraded = features.astype(np.float64, copy=True)
+    std = features[:, list(NUMERIC_COLUMNS)].astype(np.float64).std(axis=0)
+    for offset, column in enumerate(NUMERIC_COLUMNS):
+        degraded[:, column] += rng.normal(0.0, level * std[offset], size=len(features))
+    # Keep the perturbed values inside the real observed ranges, and restore the
+    # integrality of the count/age fields.
+    for column in NUMERIC_COLUMNS:
+        low = float(features[:, column].min())
+        high = float(features[:, column].max())
+        degraded[:, column] = np.clip(degraded[:, column], low, high)
+    for column in INTEGER_COLUMNS:
+        degraded[:, column] = np.round(degraded[:, column])
+    return degraded.astype(np.float32)
 
 
-def run_all_robustness_tests():
-    """Run all robustness tests"""
+def _masked_cells(features, level, rng) -> np.ndarray:
+    """Set a random fraction of the numeric cells to NaN (unavailable field)."""
+    degraded = features.astype(np.float32, copy=True)
+    for column in NUMERIC_COLUMNS:
+        mask = rng.random(size=len(degraded)) < level
+        degraded[mask, column] = np.nan
+    return degraded
 
-    data_path = "data/processed/labeled_research_data_improved.json"
 
-    # Set seed for reproducibility
-    np.random.seed(42)
+def _dropped_field(features, column) -> np.ndarray:
+    """Mark one whole numeric field as unavailable."""
+    degraded = features.astype(np.float32, copy=True)
+    degraded[:, column] = np.nan
+    return degraded
 
-    # Run tests
-    missing_results = test_missing_fields(data_path)
-    noise_results = test_noise_perturbation(data_path)
-    ood_results = test_out_of_distribution(data_path)
 
-    # Summary
-    print("\n" + "=" * 60)
-    print("Robustness Test Summary")
-    print("=" * 60)
+def run(sample_size=DEFAULT_SAMPLE_SIZE, seed=RANDOM_STATE) -> dict:
+    """Measure model degradation under noise and missing fields on the hold-out."""
+    holdout = holdout_partition()
+    index = stratified_sample(
+        holdout['test_indices'], holdout['targets'], sample_size, seed
+    )
+    features = holdout['features'][index]
+    y_true = np.asarray(holdout['targets'][index])
+    model = RiskAgent().model
 
-    print("\nMissing Fields Robustness:")
-    for scenario, accuracy in missing_results.items():
-        degradation = (0.9740 - accuracy) / 0.9740 * 100  # vs baseline 97.40%
-        print(f"  {scenario}: {accuracy:.4f} (degradation: {degradation:.2f}%)")
+    baseline_scores = _probabilities(model, features)
+    baseline = score_metrics(y_true, baseline_scores)
 
-    print("\nNoise Perturbation Robustness:")
-    for noise, accuracy in noise_results.items():
-        degradation = (0.9740 - accuracy) / 0.9740 * 100
-        print(f"  {noise}: {accuracy:.4f} (degradation: {degradation:.2f}%)")
+    rng = np.random.RandomState(seed)
 
-    print("\nOut-of-Distribution Samples:")
-    for sample, result in ood_results.items():
-        print(f"  {sample}: {result['decision']} (confidence: {result['confidence']:.4f})")
+    noise = {}
+    for level in NOISE_LEVELS:
+        # A fresh generator per level keeps the comparison stable and reproducible.
+        scores = _probabilities(model, _noisy(features, level, np.random.RandomState(seed)))
+        metrics = score_metrics(y_true, scores)
+        metrics['roc_auc_delta'] = metrics['roc_auc'] - baseline['roc_auc']
+        noise[f'{level:.2f}'] = metrics
+
+    missing_cells = {}
+    for level in MISSING_CELL_LEVELS:
+        scores = _probabilities(
+            model, _masked_cells(features, level, np.random.RandomState(seed))
+        )
+        metrics = score_metrics(y_true, scores)
+        metrics['roc_auc_delta'] = metrics['roc_auc'] - baseline['roc_auc']
+        missing_cells[f'{level:.2f}'] = metrics
+
+    dropped_fields = {}
+    for column in NUMERIC_COLUMNS:
+        scores = _probabilities(model, _dropped_field(features, column))
+        metrics = score_metrics(y_true, scores)
+        metrics['roc_auc_delta'] = metrics['roc_auc'] - baseline['roc_auc']
+        dropped_fields[FEATURE_NAMES[column]] = metrics
 
     return {
-        'missing_fields': missing_results,
-        'noise_perturbation': noise_results,
-        'out_of_distribution': ood_results
+        'experiment': 'robustness',
+        'status': 'ok',
+        'description': 'shipped freMTPL2 claim model under noisy / incomplete inputs',
+        'sample_size': int(len(index)),
+        'sample_seed': seed,
+        'baseline': baseline,
+        'noise': noise,
+        'missing_cells': missing_cells,
+        'dropped_fields': dropped_fields,
     }
 
 
-if __name__ == "__main__":
-    results = run_all_robustness_tests()
+if __name__ == '__main__':
+    result = run()
+    base = result['baseline']
+    print(f"Sample: {result['sample_size']} policies (seed {result['sample_seed']})")
+    print(f"Clean ROC-AUC: {base['roc_auc']:.4f} | PR-AUC: {base['pr_auc']:.4f}")
+    print('Noise (relative to field std):')
+    for level, metrics in result['noise'].items():
+        print(f"  {level}: ROC-AUC {metrics['roc_auc']:.4f} (Δ {metrics['roc_auc_delta']:+.4f})")
+    print('Missing cells:')
+    for level, metrics in result['missing_cells'].items():
+        print(f"  {level}: ROC-AUC {metrics['roc_auc']:.4f} (Δ {metrics['roc_auc_delta']:+.4f})")
+    print('Dropped fields:')
+    for name, metrics in result['dropped_fields'].items():
+        print(f"  {name}: ROC-AUC {metrics['roc_auc']:.4f} (Δ {metrics['roc_auc_delta']:+.4f})")
+    print(f"Saved: {save_result('robustness', result, directory=RESULTS_DIR)}")

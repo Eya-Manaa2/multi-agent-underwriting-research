@@ -1,0 +1,80 @@
+{
+  "model_file": "fremtpl2_underwriting_model.json",
+  "feature_names": [
+    "driver_age",
+    "bonus_malus",
+    "vehicle_age",
+    "vehicle_power",
+    "vehicle_gas",
+    "density",
+    "area"
+  ],
+  "class_labels": [
+    "Accept_Standard",
+    "Accept_with_Surcharge",
+    "Reject"
+  ],
+  "target_definition": "real freMTPL2 outcome: ClaimNb >= 1 (claim occurred)",
+  "positive_class": "claim_occurred",
+  "decision_thresholds": {
+    "surcharge": 0.05,
+    "review": 0.15
+  },
+  "encoders": {
+    "area": {
+      "A": 0,
+      "B": 1,
+      "C": 2,
+      "D": 3,
+      "E": 4,
+      "F": 5
+    },
+    "vehicle_gas": {
+      "Regular": 0,
+      "Diesel": 1
+    }
+  },
+  "trained_at_utc": "2026-11-08T21:44:14+00:00",
+  "training": {
+    "real_records_used": 678013,
+    "records_skipped": 0,
+    "train_size": 542410,
+    "test_size": 135603,
+    "random_state": 42,
+    "base_rate": 0.05023502499214617
+  },
+  "metrics": {
+    "roc_auc": 0.6459807555402786,
+    "average_precision": 0.10935469485975807,
+    "accuracy_at_0_5": 0.9497135019136744,
+    "base_rate_test": 0.050234876809510116,
+    "confusion_matrix_at_0_5": [
+      [
+        128782,
+        9
+      ],
+      [
+        6810,
+        2
+      ]
+    ],
+    "test_mapped_decisions": {
+      "Accept_Standard": 90952,
+      "Accept_with_Surcharge": 40889,
+      "Reject": 3762
+    },
+    "thresholds": {
+      "surcharge": 0.05,
+      "review": 0.15
+    }
+  },
+  "source": {
+    "dataset": "freMTPL2freq",
+    "catalogue_description": "677991 motor third-party liability policies",
+    "url": "https://openml.org/data/v1/download/20649148/freMTPL2freq.arff",
+    "md5": "f8875568bf0ca622929105197e2db613",
+    "records_in_file": 678013,
+    "license": "CC0 (as stated in OpenML dataset metadata)",
+    "citation": "Christophe Dutang and Arthur Charpentier (2018), CASdatasets: Insurance datasets."
+  }
+}

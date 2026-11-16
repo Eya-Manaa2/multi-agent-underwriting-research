@@ -5,7 +5,7 @@ Audit trails, legal checks, regulatory requirements
 
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ComplianceAgent:
     """Ensures decisions comply with regulatory requirements"""
@@ -25,7 +25,7 @@ class ComplianceAgent:
         result = {
             'agent': 'Compliance',
             'compliance_checks': [],
-            'compliance_status': 'Compliant',
+            'compliance_status': 'Prototype - not certified',
             'violations': [],
             'audit_trail': []
         }
@@ -35,35 +35,35 @@ class ComplianceAgent:
             result['compliance_checks'].append('Right to explanation: Provided')
             result['audit_trail'].append({
                 'check': 'explanation_provided',
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'status': 'pass'
             })
         else:
             result['compliance_checks'].append('Right to explanation: Missing')
             result['violations'].append('Decision lacks explanation')
-            result['compliance_status'] = 'Non-compliant'
+            result['compliance_status'] = 'Prototype - explanation missing'
 
         # Audit trail check
         if all_agent_results:
             result['compliance_checks'].append('Audit trail: Complete')
             result['audit_trail'].append({
                 'check': 'audit_trail_complete',
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'status': 'pass',
                 'agents_involved': list(all_agent_results.keys())
             })
         else:
             result['compliance_checks'].append('Audit trail: Incomplete')
             result['violations'].append('Audit trail incomplete')
-            result['compliance_status'] = 'Non-compliant'
+            result['compliance_status'] = 'Prototype - audit trail incomplete'
 
         # Data protection check (simulated)
         # In production, would check for GDPR/CCPA compliance
-        result['compliance_checks'].append('Data protection: Compliant (simulated)')
+        result['compliance_checks'].append('Data protection: Not assessed (prototype simulation)')
         result['audit_trail'].append({
             'check': 'data_protection',
-            'timestamp': datetime.now().isoformat(),
-            'status': 'pass'
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'status': 'not_assessed'
         })
 
         # Appeal process check
@@ -71,7 +71,7 @@ class ComplianceAgent:
             result['compliance_checks'].append('Appeal process: Required for rejection')
             result['audit_trail'].append({
                 'check': 'appeal_process_available',
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'status': 'pass'
             })
 
@@ -82,17 +82,18 @@ class ComplianceAgent:
 
         audit_report = {
             'application_id': application_id,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'agents_executed': [],
             'decision_path': [],
-            'compliance_status': 'Compliant',
+            'compliance_status': 'Prototype - not certified',
             'reconstructable': True
         }
 
         for agent_name, agent_result in all_results.items():
+            audit_report['decision_path'].append(agent_name)
             audit_report['agents_executed'].append({
                 'agent': agent_name,
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'key_outputs': str(agent_result)[:200]  # Truncated for brevity
             })
 

@@ -3,6 +3,8 @@
 **Date** : 30 Octobre 2026
 **Phase** : Phase 0 - Cadrage
 
+> **Note de cadrage initiale, pas un rapport final.** Les résultats et hypothèses de cette version ne sont pas tous validés sur un jeu de test indépendant. Consulter le [README](../README.md) et le [suivi du projet](../PROGRESS.md) pour les résultats corrigés et les limites méthodologiques. Le prototype ne revendique aucune conformité réglementaire.
+
 ---
 
 ## 1. Contexte et Objectifs
@@ -33,11 +35,12 @@ Concevoir et prototyper un système multi-agents IA pour la souscription en assu
 
 ### 2.1 Choix : Assurance Automobile
 
-**Justification** :
-- Disponibilité de données publiques (Kaggle, UCI)
-- Simplicité relative des variables (âge du véhicule, type, etc.)
-- Documentation souscription publique accessible
-- Pertinence pour démonstration
+**Justification pour la phase de recherche** :
+- Un benchmark public français de responsabilité civile automobile est catalogué sur OpenML : fréquence (`freMTPL2freq`, identifiant 41214) et sévérité (`freMTPL2sev`, identifiant 41215).
+- Le catalogue OpenML indique une licence CC0 pour ces deux jeux et les rattache au dépôt actuariel CASdatasets.
+- Ces données permettent d’étudier une base actuarielle de fréquence/coût des sinistres, mais ne fournissent ni décisions réelles de souscription, ni dossiers contractuels, ni intégrations d’assureur.
+
+La France est donc un **périmètre candidat pour le benchmark de recherche**, choisi selon les sources publiques actuellement repérées. Ce choix ne vaut pas validation d’un marché de déploiement : un pilote exploitable par un assureur exige ses données autorisées, ses règles et ses validations métier.
 
 ### 2.2 Exclusions
 - Vie, santé, grands risques industriels (hors périmètre)
@@ -47,54 +50,46 @@ Concevoir et prototyper un système multi-agents IA pour la souscription en assu
 
 ## 3. Données
 
-### 3.1 Source de Données
+### 3.1 Jeux présents et provenance
 
-**Données utilisées** :
-- Source : Dataset public "Insurance Claims Dataset 2026" (Kaggle)
-- Nombre de records : 5,000 (échantillon de 12,488 claims auto)
-- Variables : âge, genre, région, crédit, véhicule, prime, claim, fraud risk score
+**Source retenue** : le prototype s’appuie sur le benchmark public **freMTPL2** (responsabilité civile auto française), diffusé par OpenML sous licence **CC0** (voir § 3.2). Le modèle livré est entraîné et évalué dessus (`experiments/real_data/train_fremtpl2_model.py`, `experiments/baselines/evaluate_holdout.py`).
 
-**Limitation** :
-- Données synthétiques/public research data
-- Pas de données de production d'un vrai assureur
-- Potentiellement US-centric (régions North/South/East/West)
+**Héritage retiré** : l’ancien jeu de recherche synthétique (deux fichiers de 5 000 enregistrements sous `data/processed/`) et les scripts qui l’exploitaient (baselines B1–B4, ablation, collaboration, explainability, statistical, robustness, générateur `utils/data_processing*.py`) ont été **supprimés** du dépôt. Ils reposaient sur des variables fictives (score de crédit, prime, montant de sinistre, score de fraude) et ne sont plus référencés par le pipeline, les agents, l’API ni l’évaluation courante.
 
-### 3.2 Construction des Labels de Décision
+### 3.2 Benchmark public retenu — responsabilité civile auto française
 
-**Règle appliquée** (conforme au cahier des charges) :
-- Basée sur `fraud_risk_score` du dataset original
-- `fraud_risk_score > 70` → Reject
-- `fraud_risk_score > 50` → Accept with Surcharge
-- `fraud_risk_score <= 50` → Accept Standard
+Les fiches OpenML repérées sont :
 
-**Justification** :
-- Le dataset ne contient pas de labels de décision d'underwriting
-- Cette règle est justifiable en pratique : un score de fraude élevé indique un risque inacceptable
-- Permet de créer une classification supervisée pour entraîner le modèle ML
+- [`freMTPL2freq` (OpenML 41214)](https://www.openml.org/d/41214) : variables de risque de polices auto et nombre de sinistres. La fiche décrit 677 991 polices, alors que la qualité du catalogue indique 678 013 instances ; le nombre exact doit être contrôlé sur le fichier téléchargé avant toute expérience.
+- [`freMTPL2sev` (OpenML 41215)](https://www.openml.org/d/41215) : 26 639 montants de sinistres.
+- OpenML indique CC0 pour les deux fiches et cite Dutang et Charpentier (2018), CASdatasets ; le dépôt source est [dutangc/CASdatasets](https://github.com/dutangc/CASdatasets).
 
-**Distribution obtenue** :
-- Accept_Standard : 49.9%
-- Accept_with_Surcharge : 20.5%
-- Reject : 29.7%
+Ce benchmark est une piste pour construire et évaluer des modèles actuariels de fréquence/sévérité. Il ne contient pas les décisions historiques d’acceptation/refus, le texte des polices de l’assureur, les résultats des voies de recours ni les données nécessaires pour certifier un modèle de tarification ou de souscription. Il n’autorise donc pas à conclure qu’un système est prêt pour un assureur.
 
-### 3.3 Catalogue des Variables
+### 3.3 Labels expérimentaux — déprécié (contexte historique)
+
+La version initiale dérivait des pseudo-labels d’un `fraud_risk_score` (champ qui **n’existe pas** dans freMTPL2) :
+- `fraud_risk_score > 70` → `Reject`, `> 50` → `Accept_with_Surcharge`, sinon `Accept_Standard`.
+
+Cette convention a été **abandonnée**. Le prototype actuel entraîne un modèle **binaire** sur une cible réelle observée de freMTPL2 (la police a-t-elle déclaré au moins un sinistre ?) et dérive la recommandation par seuils métier documentés (surprime, revue). freMTPL2 ne fournissant aucune décision de souscription, cette transformation reste une convention de recherche, pas une politique d’assureur validée.
+
+**Distribution historique rapportée dans la version initiale (obsolète)** : Accept_Standard 49,9 % ; Accept_with_Surcharge 20,5 % ; Reject 29,7 %. La répartition réelle sur le hold-out freMTPL2 figure dans le [README](../README.md).
+
+### 3.4 Catalogue des Variables (freMTPL2)
+
+Le contrat de features est défini une seule fois dans `utils/actuarial_features.py` (partagé entraînement / inférence) :
 
 | Variable | Type | Sensible | Description |
 |-----------|------|----------|-------------|
-| age | Numérique | ❌ | Âge du conducteur |
-| gender | Catégorielle | ✅ | Genre du conducteur |
-| region | Catégorielle | ❌ | Région géographique |
-| credit_score | Numérique | ❌ | Score de crédit |
-| vehicle_value | Numérique | ❌ | Valeur du véhicule |
-| premium_amount | Numérique | ❌ | Montant de la prime |
-| claim_amount | Numérique | ❌ | Montant du claim |
-| fraud_flag | Binaire | ❌ | Indicateur de fraude (du dataset) |
-| fraud_risk_score | Numérique | ❌ | Score de risque de fraude (du dataset) |
+| driver_age | Numérique | ⚠️ proxy | Âge du conducteur (`DrivAge`) |
+| bonus_malus | Numérique | ❌ | Coefficient bonus-malus (`BonusMalus`) |
+| vehicle_age | Numérique | ❌ | Ancienneté du véhicule (`VehAge`) |
+| vehicle_power | Numérique | ❌ | Puissance du véhicule (`VehPower`) |
+| vehicle_gas | Catégorielle | ❌ | Carburant (`Regular` / `Diesel`) |
+| density | Numérique | ❌ | Densité de population de la commune (proxy géographique) |
+| area | Catégorielle | ❌ | Zone géographique codée de `A` à `F` (proxy géographique) |
 
-**Attributs sensibles** :
-- `gender` est marqué comme sensible (protégé)
-- `region` peut être un proxy de variables géographiques sensibles
-- Ces variables ne seront PAS utilisées directement dans le modèle ML pour la décision
+**Groupes sensibles / proxys** : `driver_age` et `bonus_malus` (indirectement `density` / `area`) servent de proxys d’équité. L’analyse d’équité rapportée est une **parité descriptive du taux de sélection** ; faute de décisions réelles d’acceptation/refus dans freMTPL2, l’égalité des chances ne peut pas être mesurée honnêtement.
 
 ---
 
@@ -182,21 +177,21 @@ Concevoir et prototyper un système multi-agents IA pour la souscription en assu
 ## 7. Protocole Expérimental
 
 ### 7.1 Split des Données
-- Train : 70%
-- Validation : 15%
-- Test : 15%
-- Split temporel si possible (pour éviter les fuites)
+
+- Entraînement / hold-out : **80 % / 20 %** (séparation stratifiée, graine 42), sur les 678 013 polices freMTPL2 retenues.
+- L’évaluation hold-out (`experiments/baselines/evaluate_holdout.py`) reproduit exactement cette partition (mêmes taille, stratification et graine).
+- Un split temporel n’est pas possible : freMTPL2 ne fournit pas d’horodatage exploitable des polices.
 
 ### 7.2 Mesures par Axe
 
 | Axe | Mesures |
 |-----|---------|
-| Qualité de décision | Exactitude, F1, erreur sur prime |
+| Qualité de décision | ROC-AUC, PR-AUC, exactitude (seuil 0,5) |
 | Robustesse | Résultats sous bruit, champs manquants |
-| Incertitude | ECE, Brier, taux d'escalade pertinent |
-| Équité | Parité, égalité des chances, écart contrefactuel |
+| Incertitude | ECE top-label, Brier, taux d’escalade, courbe risque-couverture |
+| Équité | Parité descriptive du taux de sélection (âge, bonus-malus) — pas d’égalité des chances (absence de ground-truth accept/refus) |
 | Explicabilité | Fidélité, évaluation humaine |
-| Efficacité | Latence, coût en jetons, taux d'automatisation |
+| Efficacité | Latence, coût en jetons, taux d’automatisation |
 | Conformité | Couverture exigences, complétude journal |
 
 ### 7.3 Rigueur Statistique

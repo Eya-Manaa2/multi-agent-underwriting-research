@@ -1,0 +1,14 @@
+RELEVE D'INFORMATION - ASSURANCE AUTOMOBILE
+===========================================
+
+Assure : client de demonstration
+Contrat : police automobile n° DEMO-0001
+Vehicule assure : Renault Clio 1.5 dCi, immatriculation AB-123-CD
+Conducteur principal : 35 ans, permis categorie B
+
+Antecedents declares (24 derniers mois) :
+- 3 sinistres automobile declares
+- aucun sinistre corporel
+
+Objet du document : releve d'information remis au souscripteur pour l'etude
+du dossier d'assurance auto.

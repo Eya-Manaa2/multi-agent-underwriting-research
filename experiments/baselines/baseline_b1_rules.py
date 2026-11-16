@@ -1,168 +1,115 @@
-"""
-Baseline B1: Rule-Based Underwriting
-Simple if-then rules for underwriting decisions
+"""B1 - underwriting rules only (transparent if-then thresholds).
+
+A deterministic, human-readable rule set over the *real* freMTPL2 variables. It is a
+research baseline, not an insurer acceptance policy: freMTPL2 ships no accept/reject
+labels, so the rule bands below are a documented engineering convention. The rule
+points follow the risk directions actually observed in the dataset (young drivers and
+high bonus-malus file more claims; dense urban areas and powerful vehicles raise the
+risk), and the point bands map onto the pilot recommendation vocabulary.
 """
 
-import json
+from __future__ import annotations
+
+import sys
 from pathlib import Path
 
-class RuleBasedUnderwriter:
-    """Rule-based underwriting baseline"""
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-    def __init__(self):
-        self.rules = {
-            'age_young_threshold': 25,
-            'age_senior_threshold': 65,
-            'credit_poor_threshold': 550,
-            'credit_excellent_threshold': 700,
-            'claim_amount_high_threshold': 10000,
-            'vehicle_value_low_threshold': 5000,
-        }
+from experiments.baselines.evaluation import (  # noqa: E402
+    decision_summary,
+    holdout_partition,
+    save_result,
+    score_metrics,
+)
+from utils.actuarial_features import CLASS_LABELS  # noqa: E402
 
-    def evaluate(self, applicant):
-        """
-        Evaluate an application using rule-based logic
+# Each rule is (name, predicate over the real record, points). Points are deliberately
+# small integers so the resulting score stays interpretable.
+RULES = (
+    ('young_driver', lambda r: r['driver_age'] < 25, 2),
+    ('very_young_driver', lambda r: r['driver_age'] < 23, 2),
+    ('high_bonus_malus', lambda r: r['bonus_malus'] > 100, 2),
+    ('very_high_bonus_malus', lambda r: r['bonus_malus'] > 130, 3),
+    ('powerful_vehicle', lambda r: r['vehicle_power'] >= 10, 1),
+    ('dense_urban_area', lambda r: r['area'] in ('E', 'F'), 1),
+    ('metropolitan_area', lambda r: r['area'] == 'F', 1),
+    ('aged_vehicle', lambda r: r['vehicle_age'] >= 10, 1),
+)
 
-        Returns:
-            dict: {decision, risk_score, confidence, reasons}
-        """
-        reasons = []
-        risk_score = 0
-        max_risk = 100
+MAX_POINTS = sum(points for _, _, points in RULES)
+SURCHARGE_POINTS = 3
+REJECT_POINTS = 6
 
-        # Age-based rules
-        age = applicant.get('age', 30)
-        if age < self.rules['age_young_threshold']:
-            risk_score += 20
-            reasons.append('Young driver (<25)')
-        elif age > self.rules['age_senior_threshold']:
-            risk_score += 15
-            reasons.append('Senior driver (>65)')
 
-        # Credit score rules
-        credit = applicant.get('credit_score', 500)
-        if credit < self.rules['credit_poor_threshold']:
-            risk_score += 30
-            reasons.append('Poor credit score')
-        elif credit > self.rules['credit_excellent_threshold']:
-            risk_score -= 10
-            reasons.append('Excellent credit score')
+class RulesBaseline:
+    """Deterministic, human-readable underwriting rules over real freMTPL2 variables."""
 
-        # Vehicle value rules
-        vehicle_value = applicant.get('vehicle_value', 20000)
-        if vehicle_value < self.rules['vehicle_value_low_threshold']:
-            risk_score += 10
-            reasons.append('Low value vehicle')
+    def triggered(self, record) -> list[str]:
+        """Return the names of the rules triggered by a record."""
+        return [name for name, predicate, _ in RULES if predicate(record)]
 
-        # Claim amount rules
-        claim_amount = applicant.get('claim_amount', 0)
-        if claim_amount > self.rules['claim_amount_high_threshold']:
-            risk_score += 25
-            reasons.append('High claim amount')
+    def points(self, record) -> int:
+        """Raw rule points of a record."""
+        return sum(points for name, predicate, points in RULES if predicate(record))
 
-        # Fraud flag
-        if applicant.get('fraud_flag', False):
-            risk_score += 50
-            reasons.append('Fraud indicator present')
+    def score(self, record) -> float:
+        """Normalise the rule points to a 0-1 risk score."""
+        return min(self.points(record) / MAX_POINTS, 1.0)
 
-        # Normalize risk score
-        risk_score = min(risk_score, max_risk)
+    def decide(self, record) -> str:
+        """Map the rule points onto the pilot recommendation vocabulary."""
+        points = self.points(record)
+        if points >= REJECT_POINTS:
+            return CLASS_LABELS[2]
+        if points >= SURCHARGE_POINTS:
+            return CLASS_LABELS[1]
+        return CLASS_LABELS[0]
 
-        # Decision based on risk score
-        if risk_score > 70:
-            decision = 'Reject'
-            confidence = 0.8
-        elif risk_score > 50:
-            decision = 'Accept_with_Surcharge'
-            confidence = 0.7
-        else:
-            decision = 'Accept_Standard'
-            confidence = 0.85
-
+    def evaluate(self, records) -> dict:
+        """Return per-record decisions and scores for a list of real records."""
         return {
-            'decision': decision,
-            'risk_score': risk_score,
-            'confidence': confidence,
-            'reasons': reasons,
-            'baseline': 'B1_rules'
+            'decisions': [self.decide(record) for record in records],
+            'scores': [self.score(record) for record in records],
+            'rules_triggered': [self.triggered(record) for record in records],
         }
 
 
-def run_baseline_b1(data_path):
-    """Run baseline B1 on the dataset"""
+def run() -> dict:
+    holdout = holdout_partition()
+    index = holdout['test_indices']
+    records = [holdout['records'][position] for position in index]
+    y_true = holdout['targets'][index]
 
-    print("=" * 60)
-    print("Baseline B1: Rule-Based Underwriting")
-    print("=" * 60)
-
-    # Load data
-    with open(data_path, 'r') as f:
-        data = json.load(f)
-
-    print(f"Loaded {len(data)} records")
-
-    # Initialize underwriter
-    underwriter = RuleBasedUnderwriter()
-
-    # Evaluate all records
-    results = []
-    correct = 0
-    for record in data:
-        # Prepare applicant data
-        applicant = {
-            'age': record.get('age'),
-            'credit_score': record.get('credit_score'),
-            'vehicle_value': record.get('vehicle_value'),
-            'claim_amount': record.get('claim_amount'),
-            'fraud_flag': record.get('fraud_flag'),
-        }
-
-        # Evaluate
-        result = underwriter.evaluate(applicant)
-        result['true_decision'] = record.get('decision')
-        result['application_id'] = record.get('application_id')
-
-        # Check accuracy
-        if result['decision'] == result['true_decision']:
-            correct += 1
-
-        results.append(result)
-
-    # Calculate metrics
-    accuracy = correct / len(data)
-
-    # Print results
-    print(f"\nResults:")
-    print(f"  Accuracy: {accuracy:.4f}")
-    print(f"  Correct: {correct}/{len(data)}")
-
-    # Decision distribution
-    decisions = [r['decision'] for r in results]
-    print(f"\nDecision distribution:")
-    for decision in set(decisions):
-        count = decisions.count(decision)
-        pct = count / len(data) * 100
-        print(f"  {decision}: {count} ({pct:.1f}%)")
-
-    # Risk score distribution
-    risk_scores = [r['risk_score'] for r in results]
-    print(f"\nRisk score statistics:")
-    print(f"  Mean: {sum(risk_scores)/len(risk_scores):.2f}")
-    print(f"  Min: {min(risk_scores):.2f}")
-    print(f"  Max: {max(risk_scores):.2f}")
-
-    # Save results
-    output_path = Path("experiments/baselines/baseline_b1_results.json")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(output_path, 'w') as f:
-        json.dump(results, f, indent=2)
-
-    print(f"\nResults saved to {output_path}")
-
-    return results, accuracy
+    baseline = RulesBaseline()
+    evaluated = baseline.evaluate(records)
+    payload = {
+        'baseline': 'B1_rules_only',
+        'description': 'transparent if-then underwriting rules, no learning',
+        'dataset_size': holdout['dataset_size'],
+        'test_size': holdout['test_size'],
+        'rules': [
+            {'name': name, 'points': points} for name, _, points in RULES
+        ],
+        'bands': {'surcharge_points': SURCHARGE_POINTS, 'reject_points': REJECT_POINTS},
+        **score_metrics(y_true, evaluated['scores']),
+        **decision_summary(y_true, evaluated['decisions']),
+    }
+    return payload
 
 
-if __name__ == "__main__":
-    data_path = "data/processed/labeled_research_data.json"
-    results, accuracy = run_baseline_b1(data_path)
+if __name__ == '__main__':
+    result = run()
+    print(f"Dataset: {result['dataset_size']:,} real policies")
+    print(f"Hold-out partition: {result['test_size']:,} policies")
+    print(f"Base claim rate: {result['base_rate']:.4f}")
+    print(f"ROC-AUC: {result['roc_auc']:.4f}")
+    print(f"PR-AUC : {result['pr_auc']:.4f}")
+    print(f"Accuracy @0.5: {result['accuracy_at_0_5']:.4f}")
+    print(f"Decision counts: {result['decision_counts']}")
+    print(
+        f"Adverse flag: rate {result['flagged_rate']:.4f} | "
+        f"precision {result['flag_precision']:.4f} | recall {result['flag_recall']:.4f}"
+    )
+    print(f"Saved: {save_result('b1_rules_only', result)}")

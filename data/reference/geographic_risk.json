@@ -1,0 +1,72 @@
+{
+  "_meta": {
+    "version": "1.0.0-fremtpl2",
+    "updated_at": "2026-11-08T21:51:33+00:00",
+    "description": "Taux de sinistralité réel par classe géographique freMTPL2 (Area A-F), dérivé de l’intégralité des polices réelles.",
+    "source": "freMTPL2 (OpenML) — valeurs dérivées des données réelles",
+    "license": "CC0 (as stated in OpenML dataset metadata)",
+    "citation": "Christophe Dutang and Arthur Charpentier (2018), CASdatasets: Insurance datasets."
+  },
+  "records": [
+    {
+      "area_code": "A",
+      "label_fr": "Rural / très faible densité",
+      "policies": 103957,
+      "claim_policies": 4831,
+      "zone_risk_rate": 0.046471,
+      "claims_observed": 3364,
+      "avg_claim_amount": 2300.72,
+      "hazards": []
+    },
+    {
+      "area_code": "B",
+      "label_fr": "Semi-rural",
+      "policies": 75459,
+      "claim_policies": 3630,
+      "zone_risk_rate": 0.048106,
+      "claims_observed": 2633,
+      "avg_claim_amount": 3370.29,
+      "hazards": []
+    },
+    {
+      "area_code": "C",
+      "label_fr": "Périurbain",
+      "policies": 191880,
+      "claim_policies": 9356,
+      "zone_risk_rate": 0.04876,
+      "claims_observed": 7093,
+      "avg_claim_amount": 2060.07,
+      "hazards": []
+    },
+    {
+      "area_code": "D",
+      "label_fr": "Urbain",
+      "policies": 151596,
+      "claim_policies": 7892,
+      "zone_risk_rate": 0.052059,
+      "claims_observed": 6458,
+      "avg_claim_amount": 2243.19,
+      "hazards": []
+    },
+    {
+      "area_code": "E",
+      "label_fr": "Urbain dense",
+      "policies": 137167,
+      "claim_policies": 7296,
+      "zone_risk_rate": 0.053191,
+      "claims_observed": 6122,
+      "avg_claim_amount": 2126.34,
+      "hazards": []
+    },
+    {
+      "area_code": "F",
+      "label_fr": "Grande métropole / très dense",
+      "policies": 17954,
+      "claim_policies": 1055,
+      "zone_risk_rate": 0.058761,
+      "claims_observed": 774,
+      "avg_claim_amount": 1524.04,
+      "hazards": []
+    }
+  ]
+}

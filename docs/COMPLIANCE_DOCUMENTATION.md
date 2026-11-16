@@ -1,250 +1,40 @@
-"""
-Compliance and Audit Trail Documentation
-Document how the system ensures regulatory compliance and auditability
-"""
+# Gouvernance, conformité et audit — état réel du prototype
 
-"""
-COMPLIANCE FRAMEWORK DOCUMENTATION
-==================================
+> **Aucune conformité réglementaire n’est certifiée.** Ce document décrit les mécanismes de démonstration présents dans le dépôt et les contrôles qui restent à réaliser. Il ne constitue pas un avis juridique ni une déclaration de conformité RGPD, AI Act ou assurance.
 
-1. Audit Trail Implementation
------------------------------
+## Mécanismes présents
 
-The multi-agent system automatically generates comprehensive audit trails for every decision:
+- **Validation** : champs requis, types, valeurs finies et bornes contrôlés par `IntakeAgent`. Les valeurs manquantes ou invalides bloquent le workflow ; elles ne sont pas remplacées par une valeur par défaut.
+- **Supervision** : le mode humain est le défaut dans l’interface et dans l’orchestrateur. Une recommandation de refus est transformée en demande de revue humaine dans ce mode.
+- **Accès et rôles** : authentification locale et RBAC pilote (`uw`, `manager`, `compliance`, `admin`) par capacités explicites. Le rôle conformité est en lecture seule ; l’administrateur gère les comptes. Il n’y a ni SSO, ni MFA, ni annuaire d’entreprise.
+- **Explication** : le prototype produit une synthèse utilisateur, des facteurs et une trace des sorties des agents. Ces textes ne constituent pas une explication juridique validée.
+- **Équité** : l’agent individuel signale les cas à examiner, sans déclarer qu’un cas isolé prouve ou exclut un biais. L’analyse statistique hors échantillon rapporte des taux d’approbation par groupes d’âge et de score de crédit.
+- **Trace** : l’application expose les résultats des agents, journalise chaque dossier et chaque décision humaine dans un stockage SQLite local append-only à chaîne de hachage, et permet de télécharger un objet JSON avec l’identifiant d’exécution, l’horodatage et un verdict d’intégrité de la chaîne.
 
-### Automated Audit Trail Components
+## Ce que le prototype ne fait pas
 
-Each decision in the system includes:
-- **Timestamp**: When the decision was made
-- **Application ID**: Unique identifier for the insurance application
-- **Agent Sequence**: Which agents processed the application
-- **Agent Outputs**: Results from each agent (Intake, Customer, Risk, Document, External, Claims, Decision)
-- **Decision Logic**: How the final decision was reached
-- **Confidence Score**: Model confidence in the decision
-- **Risk Factors**: Factors contributing to the decision
-- **Reasoning**: Explanation for the decision
+- Le statut de conformité est volontairement `Prototype - not certified`.
+- Les agents documentaires, externes et sinistres utilisent des règles/données simulées ; il n’y a ni OCR réel, ni RAG avec sources juridiques vérifiées, ni consultation d’API ou registre.
+- La trace est append-only et vérifiable par chaîne de hachage (détection d’altération), mais elle n’est ni signée cryptographiquement, ni conservée dans un stockage sécurisé externe.
+- L’application implémente une authentification locale et un RBAC pilote, mais ni gestion du consentement, ni politiques de conservation/suppression, ni chiffrement applicatif, ni processus réel de réclamation ou de recours.
+- Les contrôles affichés ne vérifient pas la base légale, l’information des personnes, l’analyse d’impact, les transferts de données, les obligations de documentation, ni l’applicabilité de règles réglementaires précises.
+- L’âge est une variable du modèle ; le score de crédit peut servir de proxy socio-économique. Les mesures sur ces variables ne permettent pas de conclure à l’équité ou à la légalité.
 
-### Implemented Compliance Agents
+## Données et export
 
-#### 1. Compliance Agent (agents/compliance_agent.py)
-**Purpose**: Ensures decisions comply with regulatory requirements
+Les dossiers saisis sont enregistrés localement dans SQLite (`data/runtime/`, gitignoré) au titre du pilote, pour la revue HITL et l’audit ; ils restent sur le poste et ne sont pas transmis à un service tiers. Le téléchargement de la trace inclut toutes les valeurs soumises ; il ne faut donc pas saisir de données personnelles réelles ni partager un export sans revue.
 
-**Capabilities**:
-- Regulatory rule checking
-- Documentation completeness verification
-- Decision audit trail generation
-- Compliance violation detection
+Les pièces jointes PDF texte et TXT sont traitées en mémoire. Seul du texte UTF-8 peut être extrait d’un TXT ; un PDF texte nécessite le paquet `pypdf`, et un PDF scanné ne peut pas être traité sans OCR. Quand le lecteur PDF n’est pas disponible, le fichier peut rester attaché au dossier, mais l’interface indique explicitement que son contenu n’a pas été lu. Les expressions repérées par le prototype sont lexicales, non contractuelles, et n’influencent pas la recommandation.
 
-**Implementation**:
-```python
-class ComplianceAgent:
-    def process(self, application, risk_result, decision_result):
-        # Check regulatory rules
-        # Verify documentation
-        # Generate audit trail
-        # Flag compliance issues
-```
+Le jeu d’évaluation contient 5 000 dossiers de recherche et des pseudo-labels générés par règles. La source initiale n’est pas distribuée dans ce dépôt. Sa provenance, sa licence et ses conditions d’usage doivent être établies avant diffusion académique ou réutilisation.
 
-#### 2. Fairness Agent (agents/fairness_agent.py)
-**Purpose**: Detects and mitigates bias in decisions
+## Conditions préalables à un usage réel
 
-**Capabilities**:
-- Demographic parity checking
-- Equal opportunity monitoring
-- Disparate impact analysis
-- Subgroup error rate tracking
+1. Obtenir une revue juridique et conformité dans la juridiction et le produit visés.
+2. Documenter les sources, licences, catégories de données, bases légales, finalités, durées et droits des personnes.
+3. Évaluer les performances et les erreurs sur des données indépendantes représentatives, annotées par des experts métier.
+4. Réaliser une analyse d’impact et des tests de discrimination directe/indirecte avec groupes appropriés, effectifs suffisants et intervalles d’incertitude.
+5. Définir la responsabilité, le contrôle, la contestation, l’intervention humaine effective et la journalisation sécurisée.
+6. Faire valider les explications, les seuils et le protocole de surveillance par les parties prenantes compétentes.
 
-**Regulatory Relevance**:
-- GDPR (right to explanation, non-discrimination)
-- Insurance regulations (fair pricing, no unfair discrimination)
-- Anti-discrimination laws
-
-#### 3. Explanation Agent (agents/explanation_agent.py)
-**Purpose**: Generates explanations for different audiences
-
-**Capabilities**:
-- Customer-facing explanations (simple, non-technical)
-- Regulator-facing explanations (detailed, technical)
-- Auditor-facing explanations (comprehensive, traceable)
-
-**Regulatory Relevance**:
-- GDPR Article 22 (right to explanation)
-- Insurance transparency requirements
-- Regulatory audit requirements
-
-2. Audit Trail Data Structure
------------------------------
-
-Each decision generates an audit record with the following structure:
-
-```json
-{
-  "audit_trail": {
-    "timestamp": "2026-10-30T12:00:00Z",
-    "application_id": "APP_12345",
-    "decision": "Accept_with_Surcharge",
-    "confidence": 0.97,
-    "agent_sequence": [
-      {
-        "agent": "IntakeAgent",
-        "timestamp": "2026-10-30T12:00:01Z",
-        "output": {
-          "valid": true,
-          "missing_fields": [],
-          "risk_factors": []
-        }
-      },
-      {
-        "agent": "CustomerAgent",
-        "timestamp": "2026-10-30T12:00:02Z",
-        "output": {
-          "credit_risk": "medium",
-          "customer_segment": "standard"
-        }
-      },
-      {
-        "agent": "RiskAgent",
-        "timestamp": "2026-10-30T12:00:03Z",
-        "output": {
-          "decision": "Accept_with_Surcharge",
-          "risk_score": 50.0,
-          "confidence": 0.97,
-          "feature_contributions": {...}
-        }
-      },
-      {
-        "agent": "DecisionAgent",
-        "timestamp": "2026-10-30T12:00:04Z",
-        "output": {
-          "final_decision": "Accept_with_Surcharge",
-          "reasoning": "Based on ML model with high confidence",
-          "escalation": false
-        }
-      }
-    ],
-    "compliance_check": {
-      "regulatory_compliant": true,
-      "documentation_complete": true,
-      "fairness_metrics": {
-        "demographic_parity": 0.935,
-        "equal_opportunity": 0.996
-      }
-    }
-  }
-}
-```
-
-3. Regulatory Compliance Checklist
-----------------------------------
-
-### GDPR (General Data Protection Regulation)
-- [x] Right to explanation: Explanation Agent provides customer-facing explanations
-- [x] Right to human intervention: Human-in-the-loop mode implemented
-- [x] Data minimization: Only necessary features used
-- [x] Accuracy and fairness: Fairness Agent monitors bias
-- [x] Audit trail: Complete audit trail for every decision
-
-### Insurance Regulations
-- [x] Underwriting documentation: Document Agent captures policy details
-- [x] Claims history: Claims Agent analyzes historical claims
-- [x] Risk assessment: Risk Agent provides ML-based risk evaluation
-- [x] Decision justification: Explanation Agent provides reasoning
-- [x] Auditability: Complete audit trail stored
-
-### Anti-Discrimination Laws
-- [x] Fairness monitoring: Fairness Agent tracks demographic parity
-- [x] Equal opportunity: Monitored and reported
-- [x] Disparate impact: Calculated and flagged if concerning
-- [x] Subgroup analysis: Error rates tracked per subgroup
-
-4. Audit Trail Completeness Metrics
------------------------------------
-
-The system measures audit trail completeness:
-
-- **Agent Coverage**: Percentage of agents that successfully processed the application
-- **Data Completeness**: Percentage of required fields present
-- **Explanation Coverage**: Percentage of decisions with explanations
-- **Compliance Coverage**: Percentage of decisions with compliance checks
-
-### Current Implementation Status
-
-Based on the implemented pipeline:
-
-- ✅ Agent Coverage: 100% (all agents execute)
-- ✅ Data Completeness: Validated by Intake Agent
-- ✅ Explanation Coverage: 100% (Explanation Agent generates explanations)
-- ✅ Compliance Coverage: 100% (Compliance Agent checks each decision)
-
-5. Reproducibility and Documentation
------------------------------------
-
-### Reproducibility Checklist
-
-For third-party reproduction, the system provides:
-
-- ✅ Dataset generation script (data/processed/labeled_research_data_improved.json)
-- ✅ Model artifact (models/underwriter_xgboost_model.json)
-- ✅ Feature names (models/feature_names.pkl)
-- ✅ Label encoder (models/label_encoder.pkl)
-- ✅ Random seeds documented (42 for reproducibility)
-- ✅ Environment specifications (requirements.txt)
-- ✅ Experiment scripts (experiments/ directory)
-- ✅ Results documentation (PROGRESS.md)
-
-### Documentation Completeness
-
-- ✅ README.md with project overview
-- ✅ PROGRESS.md with detailed progress tracking
-- ✅ Agent documentation in each agent file
-- ✅ Experiment documentation in experiment scripts
-- ✅ Results documented with metrics
-
-6. Limitations and Future Work
-------------------------------
-
-### Current Limitations
-
-1. **Simplified Regulatory Rules**: The Compliance Agent uses simplified rules. A production system would need actual regulatory rule sets.
-
-2. **Simulated Document Analysis**: The Document Agent simulates RAG. A production system would need actual document OCR and analysis.
-
-3. **Limited External Data**: The External Agent uses simulated external data. A production system would integrate real external APIs.
-
-4. **No Real-Time Monitoring**: The system doesn't have real-time compliance monitoring dashboards.
-
-### Future Enhancements
-
-1. **Real Regulatory Rule Engine**: Integrate actual regulatory rule sets from insurance authorities.
-
-2. **Document OCR Pipeline**: Implement actual document OCR and analysis.
-
-3. **External API Integration**: Connect to real external data sources (credit bureaus, weather services, etc.).
-
-4. **Real-Time Monitoring Dashboard**: Build a dashboard for monitoring compliance metrics in real-time.
-
-5. **Automated Reporting**: Generate automated compliance reports for regulators.
-
-6. **Blockchain Audit Trail**: Use blockchain for immutable audit trail storage.
-
-7. **Advanced Fairness Techniques**: Implement more advanced fairness mitigation techniques.
-
----
-
-SUMMARY
-=======
-
-The multi-agent underwriting system has a solid compliance and auditability framework:
-
-✅ Complete audit trails for every decision
-✅ Compliance, Fairness, and Explanation agents implemented
-✅ GDPR, insurance regulations, and anti-discrimination considerations addressed
-✅ Audit trail completeness metrics tracked
-✅ Reproducibility documentation provided
-✅ Limitations documented honestly
-
-The system is suitable for academic research and demonstrates good practices for regulatory compliance and auditability in AI-based underwriting systems.
-"""
-
-if __name__ == "__main__":
-    print(__doc__)
+Le prototype est conçu pour la démonstration et la discussion de ces exigences, pas pour souscrire, tarifer, refuser ou modifier une police réelle.

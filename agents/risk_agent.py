@@ -1,87 +1,91 @@
+"""Risk Agent: real freMTPL2 claim-occurrence model.
+
+Loads the model trained on 678,013 real public French motor policies
+(``experiments/real_data/train_fremtpl2_model.py``) and turns a validated
+application into a predicted claim probability. The probability is mapped onto the
+pilot recommendation vocabulary through the documented business thresholds, so the
+encoding can never drift from training (both use ``utils.actuarial_features``).
 """
-Risk Agent: Evaluates risk using trained ML model
-"""
+
+from pathlib import Path
 
 import numpy as np
-from pathlib import Path
 import xgboost as xgb
-import pickle
+
+from agents.intake_agent import IntakeAgent
+from utils.actuarial_features import (
+    CLASS_LABELS,
+    FEATURE_NAMES,
+    REVIEW_THRESHOLD,
+    SURCHARGE_THRESHOLD,
+    decision_from_probability,
+    feature_vector,
+)
+
+MODEL_FILE = (
+    Path(__file__).resolve().parents[1] / 'models' / 'fremtpl2_underwriting_model.json'
+)
+NEGATIVE_LABEL = 'no_claim'
+POSITIVE_LABEL = 'claim_occurred'
+
 
 class RiskAgent:
-    """Evaluates risk using trained ML model"""
+    """Evaluates risk using the trained ML model"""
 
     def __init__(self):
         self.model = None
-        self.label_encoder = None
-        self.feature_names = None
+        self.feature_names = FEATURE_NAMES
         self._load_model()
 
     def _load_model(self):
-        """Load the trained XGBoost model"""
-        model_path = Path("models/underwriter_xgboost_model.json")
-        encoder_path = Path("models/label_encoder.pkl")
-        features_path = Path("models/feature_names.pkl")
+        """Load the trained XGBoost claim model."""
+        if not MODEL_FILE.is_file():
+            raise FileNotFoundError(f'Trained model not found: {MODEL_FILE}')
 
-        if model_path.exists():
-            self.model = xgb.XGBClassifier()
-            self.model.load_model(str(model_path))
-            print("[OK] Risk Agent: Model loaded")
+        self.model = xgb.XGBClassifier()
+        self.model.load_model(str(MODEL_FILE))
+        if self.model.n_features_in_ != len(FEATURE_NAMES):
+            raise ValueError(
+                f'Model expects {self.model.n_features_in_} features; '
+                f'the application pipeline provides {len(FEATURE_NAMES)}'
+            )
 
-        if encoder_path.exists():
-            with open(encoder_path, 'rb') as f:
-                self.label_encoder = pickle.load(f)
-
-        if features_path.exists():
-            with open(features_path, 'rb') as f:
-                self.feature_names = pickle.load(f)
+    @staticmethod
+    def _risk_score(probability: float) -> float:
+        """Map the real claim probability onto a 0-100 index aligned with the bands."""
+        if probability >= REVIEW_THRESHOLD:
+            return 70 + (probability - REVIEW_THRESHOLD) / (1 - REVIEW_THRESHOLD) * 30
+        if probability >= SURCHARGE_THRESHOLD:
+            return (
+                40
+                + (probability - SURCHARGE_THRESHOLD)
+                / (REVIEW_THRESHOLD - SURCHARGE_THRESHOLD)
+                * 30
+            )
+        return probability / SURCHARGE_THRESHOLD * 40
 
     def process(self, application, intake_result, customer_result):
-        """Evaluate risk using ML model"""
-        if self.model is None:
-            return {
-                'agent': 'Risk',
-                'decision': 'Error',
-                'risk_score': 0,
-                'confidence': 0,
-                'error': 'Model not loaded'
-            }
+        """Evaluate risk using the real claim-probability model."""
+        validation = IntakeAgent().process(application)
+        if validation['status'] != 'validated':
+            raise ValueError(
+                'Risk evaluation requires a valid application: '
+                + '; '.join(validation['errors'])
+            )
 
-        # Prepare features
-        features = np.array([[
-            application.get('age', 30),
-            application.get('credit_score', 500),
-            application.get('vehicle_value', 20000),
-            application.get('premium_amount', 1000),
-            application.get('claim_amount', 0),
-            1 if application.get('fraud_flag', False) else 0
-        ]])
-
-        # Predict
-        prediction = self.model.predict(features)[0]
-        probabilities = self.model.predict_proba(features)[0]
-
-        # Decode label
-        decision = self.label_encoder.inverse_transform([prediction])[0]
-
-        # Get confidence
-        confidence = max(probabilities)
-
-        # Calculate risk score
-        if decision == 'Reject':
-            risk_score = 70 + (1 - confidence) * 30
-        elif decision == 'Accept_with_Surcharge':
-            risk_score = 50 + (1 - confidence) * 20
-        else:
-            risk_score = 30 * (1 - confidence)
+        features = np.asarray([feature_vector(application)], dtype=np.float32)
+        probability = float(self.model.predict_proba(features)[0][1])
+        decision = decision_from_probability(probability)
+        confidence = max(probability, 1 - probability)
 
         return {
             'agent': 'Risk',
             'decision': decision,
-            'risk_score': risk_score,
+            'risk_score': float(self._risk_score(probability)),
             'confidence': confidence,
+            'claim_probability': probability,
             'ml_probabilities': {
-                'Accept_Standard': float(probabilities[0]),
-                'Accept_with_Surcharge': float(probabilities[1]),
-                'Reject': float(probabilities[2])
-            }
+                NEGATIVE_LABEL: 1 - probability,
+                POSITIVE_LABEL: probability,
+            },
         }

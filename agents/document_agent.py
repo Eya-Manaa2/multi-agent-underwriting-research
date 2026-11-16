@@ -1,103 +1,190 @@
-"""
-Document Agent: Analyzes policy documents using RAG
-In a production system, this would use embeddings and vector search
-For this prototype, we simulate RAG with keyword-based retrieval
-"""
+"""Apply prototype rules and indicative keyword checks to uploaded documents."""
 
-import json
-from pathlib import Path
+import re
+import unicodedata
 
 class DocumentAgent:
     """Analyzes policy documents and conditions"""
 
     def __init__(self):
-        # Load simulated policy knowledge base
-        self.knowledge_base = self._load_knowledge_base()
         print("[OK] Document Agent initialized")
 
-    def _load_knowledge_base(self):
-        """Load simulated policy knowledge base"""
-        # In production, this would be a vector database
-        kb = {
-            "exclusions": [
-                "Fraudulent claims",
-                "Unlicensed drivers",
-                "Vehicles used for commercial purposes without proper coverage",
-                "Intentional damage",
-                "Racing or speed competitions"
-            ],
-            "conditions": [
-                "Must maintain valid driver's license",
-                "Must report accidents within 30 days",
-                "Premium payments must be made on time",
-                "Vehicle must be roadworthy",
-                "No modifications that increase risk without notification"
-            ],
-            "coverage_limits": {
-                "third_party": 100000,
-                "property_damage": 50000,
-                "personal_injury": 250000
-            }
-        }
-        return kb
+    def process(
+        self,
+        application,
+        risk_result,
+        document_text=None,
+        document_name=None,
+        document_provided=None,
+        document_size_bytes=None,
+        document_status=None,
+        document_bundle=None,
+    ):
+        """Analyze the submitted application and optionally inspect extracted text.
 
-    def process(self, application, risk_result):
-        """Analyze application against policy documents"""
+        When ``document_bundle`` is provided (multi-document intake), it takes
+        precedence over the single-document arguments.
+        """
 
-        fraud_flag = application.get('fraud_flag', False)
-        claim_amount = application.get('claim_amount', 0)
-        premium = application.get('premium_amount', 1000)
+        if document_bundle is not None:
+            document_text = document_bundle.get('combined_text') or None
+            document_name = document_bundle.get('filenames_label')
+            document_provided = bool(document_bundle.get('documents'))
+            document_size_bytes = document_bundle.get('total_size_bytes')
+            document_status = document_bundle.get('aggregate_status')
 
         result = {
             'agent': 'Document',
             'document_checks': [],
             'exclusions': [],
             'conditions': [],
-            'warnings': []
+            'warnings': [],
+            'documents': list(document_bundle.get('documents', [])) if document_bundle else [],
+            'document_checklist': document_bundle.get('checklist') if document_bundle else None,
+            'uploaded_document': {
+                'provided': bool(document_text) if document_provided is None else document_provided,
+                'filename': document_name,
+                'size_bytes': document_size_bytes,
+                'characters_extracted': len(document_text) if document_text else 0,
+                'extraction_status': document_status or (
+                    'text_extracted' if document_text else 'not_provided'
+                ),
+                'possible_terms_for_human_review': [],
+                'affects_decision': False,
+                'affects_risk_score': False,
+                'scope_status': 'not_provided',
+                'scope_reason': None,
+            },
         }
 
-        # Check for fraud exclusion
-        if fraud_flag:
-            result['exclusions'].append("Fraudulent claims")
-            result['warnings'].append("Previous fraud indicator may lead to exclusion")
+        uploaded_document = result['uploaded_document']
+        if uploaded_document['provided']:
+            scope_status, scope_reason = self._classify_document_scope(
+                document_name,
+                document_text,
+            )
+            uploaded_document['scope_status'] = scope_status
+            uploaded_document['scope_reason'] = scope_reason
+            uploaded_document['affects_decision'] = scope_status != 'supported'
+            if scope_status != 'supported':
+                result['warnings'].append(scope_reason)
 
-        # Check claim vs coverage
-        if claim_amount > self.knowledge_base['coverage_limits']['third_party']:
-            result['warnings'].append(f"Claim amount (${claim_amount}) exceeds third-party coverage limit")
+        if document_text and uploaded_document['scope_status'] == 'supported':
+            review_terms = {
+                'Fraude ou déclaration frauduleuse': r'\b(fraud|fraudulent|fraude|frauduleux|frauduleuse)\b',
+                'Exclusion de garantie': r'\b(exclusion|exclu|exclue|excluded)\b',
+                'Permis de conduire': r'\b(permis|driver.?s license|unlicensed)\b',
+                'Usage commercial': r'\b(commercial|usage professionnel)\b',
+                'Délai de déclaration': r'\b(30 jours|thirty days|délai de déclaration)\b',
+                'Modification du véhicule': r'\b(modification|modifi[ée]s?)\b',
+                'Compétition automobile': r'\b(racing|course automobile|compétition)\b',
+            }
+            lowered_document = document_text.casefold()
+            result['uploaded_document']['possible_terms_for_human_review'] = [
+                label
+                for label, pattern in review_terms.items()
+                if re.search(pattern, lowered_document)
+            ]
+            result['warnings'].append(
+                'Repérage lexical indicatif uniquement : aucun sens contractuel ni effet sur la recommandation n’est établi. Une revue humaine du document original est requise.'
+            )
+        elif uploaded_document['provided'] and not document_text:
+            result['warnings'].append(
+                'La pièce est jointe au dossier, mais son contenu n’a pas pu être extrait et n’a pas été analysé.'
+            )
 
-        # Check premium adequacy
-        if premium < 500:
-            result['conditions'].append("Low premium may indicate under-insurance")
-
-        # Simulate RAG retrieval (in production, would use embeddings)
-        relevant_docs = self._retrieve_relevant_documents(application)
-
-        result['document_checks'] = relevant_docs
+        checklist = result.get('document_checklist')
+        if checklist:
+            unreadable = [
+                document['filename']
+                for document in result['documents']
+                if document.get('extraction_status') not in {
+                    'text_extracted',
+                    'ocr_extracted',
+                }
+            ]
+            if unreadable:
+                uploaded_document['affects_decision'] = True
+                result['warnings'].append(
+                    'Pièce(s) non exploitable(s) : '
+                    + ', '.join(unreadable)
+                    + '. Une revue humaine de l’original est requise.'
+                )
+            missing = checklist.get('missing_mandatory') or []
+            if missing:
+                uploaded_document['affects_decision'] = True
+                result['warnings'].append(
+                    'Pièces obligatoires manquantes pour ce produit : '
+                    + ', '.join(missing)
+                    + '. Le dossier doit être escaladé (demande d’information / revue humaine).'
+                )
 
         return result
 
-    def _retrieve_relevant_documents(self, application):
-        """Simulate RAG retrieval"""
-        # In production, this would:
-        # 1. Convert application to embedding
-        # 2. Search vector database for similar cases
-        # 3. Return relevant policy sections
+    @staticmethod
+    def _normalize_text(value):
+        normalized = unicodedata.normalize('NFKD', value).casefold()
+        without_accents = ''.join(
+            character
+            for character in normalized
+            if not unicodedata.combining(character)
+        )
+        return re.sub(r'[^a-z0-9]+', ' ', without_accents).strip()
 
-        retrieved = []
+    def _classify_document_scope(self, document_name, document_text):
+        """Fail closed unless the attachment contains recognizable auto-insurance context."""
+        normalized_name = self._normalize_text(document_name or '')
+        normalized_text = self._normalize_text(document_text or '')
 
-        claim_amount = application.get('claim_amount', 0)
-        if claim_amount > 0:
-            retrieved.append({
-                'section': 'Claims Process',
-                'content': 'Claims must be reported within 30 days of incident',
-                'relevance': 0.9
-            })
+        health_document_patterns = (
+            r'\bmutuelle\b',
+            r'\bassurance maladie\b',
+            r'\bassurance sante\b',
+            r'\bcomplementaire sante\b',
+            r'\bremboursement(?:s)? de soins\b',
+            r'\bfrais medicaux\b',
+            r'\bhospitalisation\b',
+        )
+        health_matches = [
+            pattern for pattern in health_document_patterns
+            if re.search(pattern, normalized_name + ' ' + normalized_text)
+        ]
+        if (
+            re.search(r'\b(?:assurance|demande) sante\b|\bmutuelle\b', normalized_name)
+            or len(health_matches) >= 2
+        ):
+            return (
+                'unsupported',
+                'Cette pièce semble concerner l’assurance santé. Cette démonstration '
+                'traite uniquement les dossiers d’assurance automobile ; aucune '
+                'recommandation automobile ne doit être tirée de ce document.',
+            )
 
-        if application.get('fraud_flag', False):
-            retrieved.append({
-                'section': 'Exclusions',
-                'content': 'Fraudulent claims are excluded from coverage',
-                'relevance': 0.95
-            })
+        auto_document_patterns = (
+            r'\bassurance automobile\b',
+            r'\bassurance auto\b',
+            r'\bpolice automobile\b',
+            r'\bpolice auto\b',
+            r'\bvehicule\b',
+            r'\bconducteur\b',
+            r'\bimmatriculation\b',
+            r'\bsinistre automobile\b',
+            r'\baccident de la route\b',
+            r'\bautomobile\b',
+            r'\bcar policy\b',
+            r'\bmotor insurance\b',
+            r'\binsured vehicle\b',
+        )
+        if any(
+            re.search(pattern, normalized_name + ' ' + normalized_text)
+            for pattern in auto_document_patterns
+        ):
+            return 'supported', None
 
-        return retrieved
+        return (
+            'unverified',
+            'Le type de cette pièce n’a pas pu être confirmé comme un document '
+            'd’assurance automobile. Aucune recommandation ne sera proposée avant '
+            'la vérification du document par un souscripteur.',
+        )
+

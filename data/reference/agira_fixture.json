@@ -1,0 +1,54 @@
+{
+  "_meta": {
+    "version": "fixture-1.0",
+    "updated_at": "2026-11-10T00:00:00+00:00",
+    "description": "Fixture FICTIVE au format d'échange AGIRA (FVA + résiliations + antécédents de sinistres). Aucune donnée réelle : elle sert uniquement à démontrer le raccordement du connecteur agira en mode replay.",
+    "source": "Fixture au format AGIRA (NON réelle) — valeurs fictives",
+    "license": "Démonstration uniquement — ne jamais présenter comme des données AGIRA réelles",
+    "real": false
+  },
+  "records": [
+    {
+      "registration": "AB-123-CD",
+      "status": "insured",
+      "insurer": "Assureur de démonstration",
+      "contract_number": "DEMO-0000001",
+      "contract_valid_until": "2026-12-31",
+      "vehicle": {
+        "make": "RENAULT",
+        "model": "CLIO",
+        "genre": "VP"
+      },
+      "resiliation": null,
+      "claims_history": [
+        {
+          "year": 2023,
+          "role": "responsible",
+          "cost_eur": 1850.0
+        },
+        {
+          "year": 2025,
+          "role": "non_responsible",
+          "cost_eur": 620.0
+        }
+      ]
+    },
+    {
+      "registration": "EF-456-GH",
+      "status": "not_insured",
+      "insurer": null,
+      "contract_number": null,
+      "contract_valid_until": null,
+      "vehicle": {
+        "make": "PEUGEOT",
+        "model": "208",
+        "genre": "VP"
+      },
+      "resiliation": {
+        "reason": "non_paiement",
+        "date": "2025-06-30"
+      },
+      "claims_history": []
+    }
+  ]
+}

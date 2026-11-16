@@ -1,0 +1,10 @@
+DEVIS D'ASSURANCE AUTOMOBILE
+============================
+
+Produit : assurance auto
+Vehicule assure : Renault Clio 1.5 dCi, immatriculation AB-123-CD
+Conducteur principal : 35 ans, bonus-malus 0.75
+Garanties proposees : responsabilite civile, vol, incendie, tous risques
+
+Prime annuelle proposee : 620 EUR
+Document de demonstration remis pour l'etude du dossier.

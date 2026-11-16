@@ -1,0 +1,62 @@
+# agent-skill-bench -- exhaustive underwriting campaign configuration.
+#
+# Every value below is a *parameter*, never a result: the benchmark reads its
+# figures back from the JSON artefacts under skill_bench/results/. Editing this
+# file changes what is measured (sample size, seeds, noise level...), not what is
+# reported.
+#
+# The file is optional: `load_config()` starts from the built-in defaults in
+# skill_bench/config.py and deep-merges this file on top, so a partial file is
+# valid and any key omitted here keeps its default.
+
+case: underwriting
+
+# Seeds of the stratified sampler. Every combination is evaluated over all of them;
+# their per-case records are pooled before the bootstrap confidence intervals.
+seeds: [1, 2, 3, 4, 5]
+
+# Number of hold-out cases drawn per seed (stratified to preserve the claim rate).
+sample_size: 60
+
+# Orchestrator collaboration mode: 'sequential' (the default workflow) or 'parallel'.
+collaboration_mode: sequential
+
+# Decision agent mode: 'human_in_the_loop' or 'automated'.
+decision_mode: human_in_the_loop
+
+# Robustness degradations. `noise` measures decision/quality stability on the
+# numeric fields; the missing-field check is a fail-closed property of intake and is
+# always run once (it does not depend on the combination).
+robustness:
+  enabled: true
+  sample_size: 20
+  noise_level: 0.10
+
+# Percentile bootstrap. `n_boot` resamples, `alpha` = 0.05 gives the 95% interval.
+bootstrap:
+  n_boot: 2000
+  alpha: 0.05
+  seed: 42
+
+# USD per one million tokens, per model, e.g.:
+#   pricing:
+#     groq/llama-3.1-8b-instant: {input: 0.05, output: 0.08}
+# Left empty on purpose: without LiteLLM and without an entry here, a
+# token-consuming model is reported as unpriceable (None), never as zero. The eleven
+# underwriting agents make no provider call, so their cost is legitimately zero.
+pricing: {}
+
+# Pareto objectives as [dotted metric path, 'max'|'min']. A combination missing any
+# of these objectives is excluded from the front (it cannot be ranked).
+pareto:
+  # Quality, latency and robustness are bootstrap intervals (hence the trailing
+  # `.point`); the token and cost axes are scalars.
+  objectives:
+    - [metrics.quality.roc_auc.point, max]
+    - [metrics.latency.per_case_ms.point, min]
+    - [metrics.cost.usd_per_case, min]
+    - [metrics.tokens.per_case, min]
+    - [metrics.robustness.noise_stability.point, max]
+
+# Where the JSON artefacts are written. `null` uses skill_bench/results/.
+output_dir: null

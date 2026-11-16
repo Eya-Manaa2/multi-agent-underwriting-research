@@ -1,41 +1,51 @@
 """
-Customer Agent: Analyzes customer profile and history
+Customer Agent: driver and vehicle profile built from real freMTPL2 variables.
+
+The former credit-score band was a fictional variable. It is replaced by the real
+French bonus-malus coefficient (CRM), the actual driver-rating variable, plus the
+real driver-age and vehicle characteristics.
 """
 
+
 class CustomerAgent:
-    """Analyzes customer profile and history"""
+    """Analyzes the driver and vehicle profile"""
 
     def process(self, application, intake_result):
-        """Analyze customer profile"""
-        age = application.get('age', 30)
-        credit = application.get('credit_score', 500)
-        fraud_flag = application.get('fraud_flag', False)
+        """Analyze the real driver/vehicle profile."""
+        driver_age = application.get('driver_age', 40)
+        bonus_malus = application.get('bonus_malus', 100)
+        vehicle_age = application.get('vehicle_age', 5)
+        vehicle_power = application.get('vehicle_power', 6)
 
         result = {
             'agent': 'Customer',
             'risk_factors': [],
-            'credit_band': 'Medium'
+            'bonus_malus_band': 'Medium',
         }
 
-        # Credit banding
-        if credit >= 700:
-            result['credit_band'] = 'Excellent'
-        elif credit >= 600:
-            result['credit_band'] = 'Good'
-        elif credit >= 500:
-            result['credit_band'] = 'Medium'
+        # Bonus-malus coefficient (CRM): the lower, the better the driver.
+        if bonus_malus <= 60:
+            result['bonus_malus_band'] = 'Excellent'
+        elif bonus_malus <= 100:
+            result['bonus_malus_band'] = 'Good'
+        elif bonus_malus <= 150:
+            result['bonus_malus_band'] = 'Medium'
         else:
-            result['credit_band'] = 'Poor'
-            result['risk_factors'].append('Poor credit score')
+            result['bonus_malus_band'] = 'Poor'
+            result['risk_factors'].append(
+                f'Coefficient bonus-malus élevé ({bonus_malus:.0f})'
+            )
 
-        # Age-based risk
-        if age < 25:
-            result['risk_factors'].append('Young driver (<25)')
-        elif age > 65:
-            result['risk_factors'].append('Senior driver (>65)')
+        # Driver-age risk (real freMTPL2 DrivAge).
+        if driver_age < 25:
+            result['risk_factors'].append('Jeune conducteur (< 25 ans)')
+        elif driver_age > 65:
+            result['risk_factors'].append('Conducteur senior (> 65 ans)')
 
-        # Fraud indicator
-        if fraud_flag:
-            result['risk_factors'].append('Fraud indicator present')
+        # Vehicle characteristics (real freMTPL2 VehAge / VehPower).
+        if vehicle_age > 15:
+            result['risk_factors'].append(f'Véhicule ancien ({vehicle_age} ans)')
+        if vehicle_power >= 12:
+            result['risk_factors'].append(f'Véhicule puissant ({vehicle_power} CV)')
 
         return result

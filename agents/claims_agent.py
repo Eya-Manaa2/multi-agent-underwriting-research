@@ -1,104 +1,93 @@
-"""
-Claims Agent: Analyzes claims history and patterns
-Frequency, severity, fraud indicators, similarity to known cases
+"""Claims Agent: real prior-claims history.
+
+The former implementation mixed fabricated current-case fields (claim amount,
+premium, fraud flag) with a fake reference file. It now relies solely on a real
+claims-history reference derived from the public freMTPL2 dataset
+(``experiments/real_data/build_reference_datasets.py``): real prior-claim amounts per
+policy, read through the ``connectors`` layer. When the dataset is unavailable the
+agent reports ``unavailable`` and does not fabricate a signal.
 """
 
-import json
-from pathlib import Path
-from collections import Counter
+from connectors.reference_data import load_reference_dataset
+
+# Prior-claims severity buckets on the aggregate amount (below bound -> label).
+SEVERITY_BUCKETS = (
+    (5000, 'Low severity'),
+    (15000, 'Medium severity'),
+    (50000, 'High severity'),
+)
+SEVERITY_REFERENCE = 30000
+MULTI_CLAIM_COUNT = 3
+SIMILARITY_FLAG = 0.7
+
 
 class ClaimsAgent:
-    """Analyzes claims history and patterns"""
+    """Analyzes prior claims history and patterns"""
 
     def __init__(self):
-        # Load simulated claims database
-        self.claims_database = self._load_claims_database()
         print("[OK] Claims Agent initialized")
 
-    def _load_claims_database(self):
-        """Load simulated claims database"""
-        # In production, this would be a real database
-        return {
-            "known_fraud_patterns": [
-                "Multiple claims in short time period",
-                "Claim amount exactly at coverage limit",
-                "Inconsistent incident descriptions",
-                "Claims immediately after policy start"
-            ],
-            "severity_buckets": {
-                "low": (0, 5000),
-                "medium": (5000, 15000),
-                "high": (15000, 50000),
-                "severe": (50000, float('inf'))
-            }
-        }
-
     def process(self, application):
-        """Analyze claims history for this application"""
-
-        claim_amount = application.get('claim_amount', 0)
-        fraud_flag = application.get('fraud_flag', False)
-        premium = application.get('premium_amount', 1000)
+        application_id = application.get('application_id')
 
         result = {
             'agent': 'Claims',
             'claims_analysis': {},
             'fraud_indicators': [],
-            'severity_assessment': '',
-            'similarity_score': 0.0
+            'severity_assessment': 'No claims',
+            'similarity_score': 0.0,
         }
 
-        # Calculate claim-to-premium ratio
-        claim_premium_ratio = claim_amount / premium if premium > 0 else 0
-        result['claims_analysis']['claim_premium_ratio'] = claim_premium_ratio
+        dataset = load_reference_dataset('claims_history')
+        result['history_source'] = dataset.descriptor()
+        if not dataset.available:
+            result['history_source_status'] = 'unavailable'
+            result['claims_analysis']['prior_claims_count'] = None
+            return result
 
-        # Severity assessment
-        if claim_amount == 0:
-            result['severity_assessment'] = 'No claims'
-        elif claim_amount < 5000:
-            result['severity_assessment'] = 'Low severity'
-        elif claim_amount < 15000:
-            result['severity_assessment'] = 'Medium severity'
-        elif claim_amount < 50000:
-            result['severity_assessment'] = 'High severity'
-        else:
-            result['severity_assessment'] = 'Severe'
+        result['history_source_status'] = 'ok'
+        records = dataset.payload.get('records') or {}
+        record = records.get(str(application_id)) if application_id else None
+        if record is None:
+            result['claims_analysis']['prior_claims_count'] = 0
+            result['claims_analysis']['history_note'] = (
+                "Aucun antécédent au fichier de référence"
+            )
+            return result
 
-        # Fraud pattern detection
-        if fraud_flag:
-            result['fraud_indicators'].append("Previous fraud indicator")
+        prior_claims = record.get('prior_claims') or []
+        total_amount = sum(
+            float(item.get('claim_amount', 0) or 0) for item in prior_claims
+        )
+        result['claims_analysis']['prior_claims_count'] = len(prior_claims)
+        result['claims_analysis']['prior_claims_total_amount'] = total_amount
+        result['severity_assessment'] = self._severity(total_amount)
 
-        if claim_premium_ratio > 10:
-            result['fraud_indicators'].append(f"High claim-to-premium ratio: {claim_premium_ratio:.1f}")
+        similarity = self._similarity(prior_claims, total_amount)
+        result['similarity_score'] = similarity
 
-        if claim_amount > 0 and claim_amount % 1000 == 0:
-            result['fraud_indicators'].append("Round claim amount (potential fraud)")
-
-        # Similarity to known cases (simulated)
-        # In production, would use embeddings to find similar cases
-        similarity_score = self._calculate_similarity(application)
-        result['similarity_score'] = similarity_score
-
-        if similarity_score > 0.8:
-            result['fraud_indicators'].append(f"High similarity to known fraud cases: {similarity_score:.2f}")
+        if len(prior_claims) >= MULTI_CLAIM_COUNT:
+            result['fraud_indicators'].append(
+                f"Antécédents multiples ({len(prior_claims)}) au fichier de référence"
+            )
+        if similarity > SIMILARITY_FLAG:
+            result['fraud_indicators'].append(
+                f"Similarité élevée avec des cas à risque : {similarity:.2f}"
+            )
 
         return result
 
-    def _calculate_similarity(self, application):
-        """Calculate similarity to known cases (simulated)"""
-        # In production, would use embedding similarity
-        claim_amount = application.get('claim_amount', 0)
-        fraud_flag = application.get('fraud_flag', False)
+    def _severity(self, total_amount):
+        """Severity label for the aggregate prior-claim amount."""
+        if total_amount <= 0:
+            return 'No claims'
+        for bound, label in SEVERITY_BUCKETS:
+            if total_amount < bound:
+                return label
+        return 'Severe'
 
-        similarity = 0.0
-
-        if fraud_flag:
-            similarity += 0.5
-
-        if claim_amount > 10000:
-            similarity += 0.2
-
-        if claim_amount > 0 and claim_amount % 1000 == 0:
-            similarity += 0.1
-
-        return min(similarity, 1.0)
+    def _similarity(self, prior_claims, total_amount):
+        """Risk similarity derived from the number and severity of real prior claims."""
+        frequency = min(len(prior_claims), 4) / 4
+        severity = min(total_amount, SEVERITY_REFERENCE) / SEVERITY_REFERENCE
+        return round(min(0.7 * frequency + 0.3 * severity, 1.0), 2)

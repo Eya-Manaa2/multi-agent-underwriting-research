@@ -1,72 +1,47 @@
-"""
-Evaluate Uncertainty Metrics on Baseline B2 Results
-"""
+"""Evaluate uncertainty on the real freMTPL2 held-out partition."""
 
-import json
-import numpy as np
-from pathlib import Path
 import sys
-import os
+from pathlib import Path
 
-# Add uncertainty module to path
-script_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, script_dir)
+import numpy as np
 
-from uncertainty_metrics import evaluate_uncertainty
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from experiments.baselines.evaluate_holdout import evaluate_holdout
+from experiments.uncertainty.uncertainty_metrics import (
+    UncertaintyMetrics,
+    evaluate_uncertainty,
+)
 
 
 def evaluate_b2_uncertainty():
-    """Evaluate uncertainty metrics on B2 baseline results"""
+    """Return calibration and selective-classification metrics."""
+    holdout = evaluate_holdout()
+    probabilities = np.asarray(holdout['probabilities'], dtype=float)
+    # Binary model: the top-label confidence is how sure the model is of its own
+    # label (the claim-indicator class it selected).
+    confidences = np.maximum(probabilities, 1.0 - probabilities)
+    results = evaluate_uncertainty(
+        holdout['y_pred'],
+        holdout['y_true'],
+        confidences,
+    )
+    results['probability_brier_score'] = UncertaintyMetrics().brier_score(
+        holdout['y_true'], probabilities
+    )
 
-    print("=" * 60)
-    print("Uncertainty Metrics Evaluation on B2 Baseline")
-    print("=" * 60)
-
-    # Load B2 results
-    results_path = Path("experiments/baselines/baseline_b2_results.json")
-    if not results_path.exists():
-        print("B2 results not found. Running B2 first...")
-        return
-
-    with open(results_path, 'r') as f:
-        b2_results = json.load(f)
-
-    # Extract predictions and confidences
-    predictions = []
-    true_labels = []
-    confidences = []
-
-    for result in b2_results:
-        predictions.append(result.get('decision'))
-        true_labels.append(result.get('true_decision'))
-        confidences.append(result.get('confidence', 0.5))
-
-    # Convert to numeric labels for metrics
-    label_map = {
-        'Accept_Standard': 0,
-        'Accept_with_Surcharge': 1,
-        'Reject': 2
-    }
-
-    y_pred = np.array([label_map.get(p, 0) for p in predictions])
-    y_true = np.array([label_map.get(t, 0) for t in true_labels])
-    y_conf = np.array(confidences)
-
-    # Normalize confidences for multi-class
-    # For binary classification, confidence is straightforward
-    # For multi-class, we need max probability
-    y_conf_norm = y_conf / 3.0  # Simple normalization
-
-    # Evaluate uncertainty
-    results = evaluate_uncertainty(y_pred, y_true, y_conf_norm)
-
-    print(f"\nAccuracy: {results['accuracy']:.4f}")
-
+    print(f"Test partition: {holdout['test_size']} records")
+    print(f"Accuracy: {results['accuracy']:.4f}")
+    print(f"Top-label ECE: {results['top_label_ece']:.4f}")
+    print(f"Top-label Brier score: {results['top_label_brier_score']:.4f}")
+    print(f"Probability Brier score (binary): {results['probability_brier_score']:.4f}")
     print(f"\nConfidence Statistics:")
     for k, v in results['confidence_statistics'].items():
         print(f"  {k}: {v:.4f}")
 
-    print(f"\nEscalation Rates (cases below threshold):")
+    print(f"\nEscalation Rates (confidence below threshold):")
     for k, v in results['escalation_rates'].items():
         print(f"  {k}: {v:.4f} ({v*100:.2f}%)")
 

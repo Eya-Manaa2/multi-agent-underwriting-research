@@ -1,0 +1,9 @@
+PERMIS DE CONDUIRE
+==================
+
+Titulaire : client de demonstration
+Categories : B
+Date de delivrance : 2010-06-15
+Pays de delivrance : France
+
+Autorise la conduite d'un vehicule leger (assurance automobile).

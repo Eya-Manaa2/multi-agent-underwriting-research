@@ -1,0 +1,72 @@
+{
+  "target_definition": "real freMTPL2 pure premium = frequency x severity",
+  "feature_names": [
+    "driver_age",
+    "bonus_malus",
+    "vehicle_age",
+    "vehicle_power",
+    "vehicle_gas",
+    "density",
+    "area"
+  ],
+  "class_labels": [
+    "Accept_Standard",
+    "Accept_with_Surcharge",
+    "Reject"
+  ],
+  "trained_at_utc": "2026-11-16T21:32:27+00:00",
+  "split": {
+    "test_size": 0.2,
+    "random_state": 42,
+    "train_policies": 542410,
+    "test_policies": 135603
+  },
+  "economic_policy": {
+    "target_loss_ratio": 0.7,
+    "surcharge_multiple": 1.0,
+    "reject_multiple": 3.0,
+    "baseline_pure_premium_eur": 123.01329803466797,
+    "surcharge_threshold_eur": 123.01329803466797,
+    "reject_threshold_eur": 369.0398941040039,
+    "equivalent_surcharge_claim_probability": 0.053210427904720255,
+    "equivalent_reject_claim_probability": 0.15963128371416077
+  },
+  "metrics": {
+    "frequency": {
+      "poisson_deviance": 0.30551723759724814,
+      "mean_predicted_count": 0.05344901233911514,
+      "mean_observed_count": 0.05336165129090065
+    },
+    "severity": {
+      "gamma_deviance": 1.716781564777634,
+      "mean_claim_amount": 2311.826889551391
+    },
+    "pure_premium": {
+      "mean_predicted_eur": 88.13902282714844,
+      "baseline_train_eur": 123.01329803466797,
+      "observed_total_cost_eur": 11055690.67,
+      "predicted_total_cost_eur": 11951916.0,
+      "loss_ratio_predicted_vs_observed": 1.0810646170150129,
+      "severity_coverage": 0.036864966114319005
+    },
+    "decision_counts_on_holdout": {
+      "Accept_Standard": 105881,
+      "Accept_with_Surcharge": 26745,
+      "Reject": 2977
+    }
+  },
+  "source": {
+    "frequency_dataset": "freMTPL2freq",
+    "severity_dataset": "freMTPL2sev",
+    "urls": [
+      "https://openml.org/data/v1/download/20649148/freMTPL2freq.arff",
+      "https://openml.org/data/v1/download/20649149/freMTPL2sev.arff"
+    ],
+    "md5": {
+      "freMTPL2freq": "f8875568bf0ca622929105197e2db613",
+      "freMTPL2sev": "24cc74449e3931cb1aad0d43a12e7a6e"
+    },
+    "license": "CC0 (as stated in OpenML dataset metadata)",
+    "citation": "Christophe Dutang and Arthur Charpentier (2018), CASdatasets: Insurance datasets."
+  }
+}

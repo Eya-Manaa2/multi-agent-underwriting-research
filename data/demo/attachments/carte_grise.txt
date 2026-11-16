@@ -1,0 +1,12 @@
+CERTIFICAT D'IMMATRICULATION (CARTE GRISE)
+==========================================
+
+Immatriculation : AB-123-CD
+Vehicule : Renault Clio 1.5 dCi
+Genre : VP (vehicule particulier)
+Puissance administrative : 6 CV
+Energie : Diesel
+Date de premiere mise en circulation : 2017-03-10
+
+Titulaire : client de demonstration
+Usage : prive (assurance automobile)
